@@ -1,5 +1,6 @@
 const Job = require('../models/Job');
 const ArtisanProfile = require('../models/ArtisanProfile');
+const {sendNotification} = require('../utils/notify');
 
 exports.createJob = async (req, res) => {
     try {
@@ -11,6 +12,12 @@ exports.createJob = async (req, res) => {
             category,
             location,
             budget
+        });
+        await sendNotification({
+            user: req.user.id,
+            title: "Job Created",
+            message: "Your job has been posted successfully",
+            type: "job",
         });
         res.status(201).json({
             success: true,
@@ -111,6 +118,7 @@ exports.matchArtisans = async (req, res) => {
             },
 
         })
+
                 .sort ({
                     ratingAverage: -1,
                     totalJobsCompleted: -1,
@@ -121,10 +129,18 @@ exports.matchArtisans = async (req, res) => {
             "user",
             "fullName email phone"
         );
+        const onlineArtisans =
+            artisans.filter(
+                (artisan) =>
+                    global.onlineUsers.has(
+                        artisan.user.toString()
+                    )
+            );
+        
         return res.status(200).json({
             success: true,
-            totalMatches: artisans.length,
-            data: artisans,
+            totalMatches: onlineArtisans.length,
+            data: onlineArtisans,
         })
 
     }catch(error) {
@@ -153,6 +169,14 @@ exports.acceptJob = async (req, res) => {
         }
         job.artisan = req.user.id
         job.status = 'accepted'
+
+        await sendNotification({
+            user: job.customer,
+            title: "Job Accepted",
+            message: "An artisan has accepted your job",
+            type: "job"
+        });
+
         await job.save();
 
         const updatedJob =
@@ -244,6 +268,15 @@ exports.updateJobStatus =
             // update status
             job.status =
                 status;
+
+            if (status === "completed") {
+                await sendNotification({
+                    user: job.customer,
+                    title: "Job Completed",
+                    message: "Your job has been marked as completed",
+                    type: "job"
+                });
+            }
 
             await job.save();
 
