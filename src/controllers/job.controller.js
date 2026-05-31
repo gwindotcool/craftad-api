@@ -1,6 +1,7 @@
 const Job = require('../models/Job');
 const ArtisanProfile = require('../models/ArtisanProfile');
 const {sendNotification} = require('../utils/notify');
+const {populate} = require("dotenv");
 
 exports.createJob = async (req, res) => {
     try {
@@ -13,6 +14,41 @@ exports.createJob = async (req, res) => {
             location,
             budget
         });
+        const matchedArtisans =
+            await ArtisanProfile.find({
+                skills: job.category,
+            })
+                .populate(
+                    "user",
+                    "fullName email phone"
+                );
+        const onlineArtisans =
+            matchedArtisans.filter(
+                (artisan) =>
+                    global.onlineUsers.has(
+                        assignedArtisan.user._id.toString()
+                    )
+            );
+
+        for (
+            const artisan
+            of onlineArtisans
+            ) {
+
+            await sendNotification({
+                user:
+                assignedArtisan.user._id,
+
+                title:
+                    "New Job Available",
+
+                message:
+                     `${job.title} • Budget ₦${job.budget}`,
+
+                type: "job",
+            });
+        }
+
         await sendNotification({
             user: req.user.id,
             title: "Job Created",
@@ -41,7 +77,7 @@ exports.suggestJobs = async (req, res) => {
                     user:req.user.id
                 })
         if (!artisan) {
-            return res.status(404).send({
+            return res.status(404).json({
                 success: false,
                 message: 'Artisan profile not found'
             })
@@ -51,7 +87,7 @@ exports.suggestJobs = async (req, res) => {
 
                 category: {
                     $in:
-                    artisan.skills
+                    assignedArtisan.skills
                 },
 
                 status:
@@ -94,6 +130,11 @@ exports.matchArtisans = async (req, res) => {
     try {
         const { jobId } = req.params;
         const job = await Job.findById(jobId)
+        console.log("TOTAL ARTISANS IN DB:", await ArtisanProfile.countDocuments());
+
+        console.log("MATCHED BEFORE GEO FILTER:", await ArtisanProfile.find({
+            skills: job.category
+        }));
 
         if (!job) {
             res.status(404).json({
@@ -101,39 +142,61 @@ exports.matchArtisans = async (req, res) => {
                 message: 'Job not found'
             })
         }
-        const artisans =
-            await ArtisanProfile.find({
-            skills: job.category,
-            availabilityStatus: true,
-            location: {
-                $near: {
-                    $geometry: {
-                        type: "Point",
-                        coordinates:
-                        job.location.coordinates,
+        const radiusLevels = [
+            5000,    // 5km
+            10000,   // 10km
+            20000,   // 20km
+            50000,   // 50km
+        ];
+        let artisans = [];
+
+        for (const radius of radiusLevels) {
+
+            artisans =
+                await ArtisanProfile.find({
+                    skills: job.category,
+                    availabilityStatus: true,
+
+                    location: {
+                        $near: {
+                            $geometry: {
+                                type: "Point",
+                                coordinates:
+                                job.location.coordinates,
+                            },
+
+                            $maxDistance: radius,
+                        },
                     },
-
-                    $maxDistance: 10000,
-                },
-            },
-
-        })
-
-                .sort ({
-                    ratingAverage: -1,
-                    totalJobsCompleted: -1,
-                    yearsOfExperience: -1
                 })
-                .limit(10)
-                .populate(
-            "user",
-            "fullName email phone"
-        );
+
+                    .sort({
+                        ratingAverage: -1,
+                        totalJobsCompleted: -1,
+                        yearsOfExperience: -1,
+                    })
+
+                    .limit(10)
+
+                    .populate(
+                        "user",
+                        "fullName email phone"
+                    );
+
+            if (artisans.length > 0) {
+
+                console.log(
+                    `FOUND ${artisans.length} ARTISANS AT ${radius}m`
+                );
+
+                break;
+            }
+        }
         const onlineArtisans =
             artisans.filter(
                 (artisan) =>
                     global.onlineUsers.has(
-                        artisan.user.toString()
+                        assignedArtisan.user._id.toString()
                     )
             );
         
@@ -161,13 +224,31 @@ exports.acceptJob = async (req, res) => {
                 message: 'Job not found'
             })
         }
+        if (!job.assignedArtisan) {
+            return res.status(400).json({
+                success: false,
+                message:
+                    "No artisan has been assigned yet",
+            });
+        }
+        if (
+            job.assignedArtisan.toString()
+            !== req.user.id
+        ) {
+            return res.status(403).json({
+                success: false,
+                message:
+                    "This job is not assigned to you",
+            });
+        }
+
         if (job.status !== 'pending') {
             return res.status(400).json({
                 success: false,
                 message: 'Job already accepted.'
             })
         }
-        job.artisan = req.user.id
+        job.assignedArtisan = req.user.id
         job.status = 'accepted'
 
         await sendNotification({
@@ -186,7 +267,7 @@ exports.acceptJob = async (req, res) => {
                     "fullName email phone"
                 )
                 .populate(
-                    "artisan",
+                    "assignedArtisan",
                     "fullName email phone"
                 );
         return res.status(200).json({
@@ -202,6 +283,103 @@ exports.acceptJob = async (req, res) => {
         })
     }
 }
+
+exports.assignArtisan = async (req, res) => {
+    try {
+        const { jobId } = req.params;
+        const { artisanId } = req.body;
+        const job = await Job.findById(jobId);
+
+        if (job.status !== "pending") {
+            return res.status(400).json({
+                success: false,
+                message:
+                    "Only pending jobs can be assigned",
+            });
+        }
+        if (job.assignedArtisan){
+            return res.status(400).json({
+                success: false,
+                message:"Artisan already assigned",
+            })
+        }
+
+        if (!job) {
+            return res.status(404).json({
+                success: false,
+                message: 'Job not found'
+            })
+        }
+        // only customer who created job can assign
+        if (job.customer.toString() !== req.user.id) {
+            return res.status(400).json({
+                success: false,
+                message: "You can only assign your own job",
+            })
+        }
+        const artisan = await ArtisanProfile.findOne({user: artisanId})
+        if (!artisan) {
+            return res.status(404).json({
+                success: false,
+                message: 'Artisan profile not found'
+            })
+        }
+        job.assignedArtisan =
+            artisanId;
+        await job.save()
+
+        const updateJob = await Job.findById(jobId)
+            .populate(
+                'customer',
+                'fullName email phone'
+            )
+            .populate(
+                "assignedArtisan",
+                "fullName email phone"
+            );
+        return res.status(200).json({
+            success: true,
+            message:"Artisan assigned successfully",
+            data: updateJob,
+        })
+    }catch(error) {
+        return res.status(500).json({
+            success: false,
+            message: error.message
+        })
+    }
+}
+
+exports.getMyJobs = async (req, res) => {
+    try {
+
+        const jobs = await Job.find({
+            assignedArtisan: req.user.id,
+            status: "accepted"
+        })
+            .populate(
+                "customer",
+                "fullName email phone"
+            )
+            .populate(
+                "assignedArtisan",
+                "fullName email phone"
+            )
+            .sort({ createdAt: -1 });
+
+        return res.status(200).json({
+            success: true,
+            totalJobs: jobs.length,
+            data: jobs
+        });
+
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+};
 
 
 exports.updateJobStatus =
@@ -232,7 +410,7 @@ exports.updateJobStatus =
 
             // only assigned artisan
             if (
-                job.artisan.toString() !==
+                job.assignedArtisan.toString() !==
                 req.user.id
             ) {
                 return res
@@ -244,25 +422,22 @@ exports.updateJobStatus =
                     });
             }
 
-            // allowed status
-            const allowedStatus =
-                [
-                    "in-progress",
-                    "completed",
-                ];
+            const validTransitions = {
+                accepted: ["in-progress"],
+                "in-progress": ["completed"],
+            };
+
+            const allowedNextStatus =
+                validTransitions[job.status] || [];
 
             if (
-                !allowedStatus.includes(
-                    status
-                )
+                !allowedNextStatus.includes(status)
             ) {
-                return res
-                    .status(400)
-                    .json({
-                        success: false,
-                        message:
-                            "Invalid status",
-                    });
+                return res.status(400).json({
+                    success: false,
+                    message:
+                        `Cannot change status from ${job.status} to ${status}`,
+                });
             }
 
             // update status
@@ -289,7 +464,7 @@ exports.updateJobStatus =
                         "fullName email phone"
                     )
                     .populate(
-                        "artisan",
+                        "assignedArtisan",
                         "fullName email phone"
                     );
 
@@ -311,5 +486,124 @@ exports.updateJobStatus =
                     message:
                     error.message,
                 });
+        }
+    };
+exports.getActiveJobs = async (req, res) => {
+    try {
+        const assignedArtisan = req.user.id;
+        const jobs = await Job.find({
+            assignedArtisan:
+            req.user.id,
+
+            status: {
+                $in: [
+                    "accepted",
+                    "in-progress"
+                ]
+            }
+        })
+            .populate(
+                "customer",
+                "fullName email phone"
+            )
+            .populate(
+                "assignedArtisan",
+                "fullName email phone"
+            )
+            .sort({
+                createdAt: -1
+            });
+        return res.status(200).json({
+            success: true,
+            totalJobs:
+            jobs.length,
+            data: jobs,
+        });
+
+
+    }catch(error) {
+        return res.status(500).json({
+            success: false,
+            message: error.message,
+        })
+    }
+}
+
+
+exports.getCompletedJobs = async (req, res) => {
+    try {
+        const jobs = await Job.find({
+            assignedArtisan:
+            req.user.id,
+
+            status:
+                "completed"
+        })
+            .populate(
+            "customer",
+             "fullName email phone"
+        )
+             .populate(
+                 "assignedArtisan",
+                 "fullName email phone"
+        )
+            .sort({
+                updatedAt: -1
+            })
+        return res.status(200).json({
+            success: true,
+            totalJobs:jobs.length,
+            data: jobs,
+        })
+    }catch(error) {
+        return res.status(500).json({
+            success: false,
+            message: error.message,
+        })
+    }
+}
+
+exports.getJobHistory =
+    async (req, res) => {
+        try {
+
+            const jobs =
+                await Job.find({
+                    assignedArtisan:
+                    req.user.id,
+
+                    status: {
+                        $in: [
+                            "completed",
+                            "cancelled"
+                        ]
+                    }
+                })
+                    .populate(
+                        "customer",
+                        "fullName email phone"
+                    )
+                    .populate(
+                        "assignedArtisan",
+                        "fullName email phone"
+                    )
+                    .sort({
+                        updatedAt: -1
+                    });
+
+            return res.status(200).json({
+                success: true,
+                totalJobs:
+                jobs.length,
+                data: jobs,
+            });
+
+        } catch (error) {
+
+            return res.status(500).json({
+                success: false,
+                message:
+                error.message,
+            });
         }
     };

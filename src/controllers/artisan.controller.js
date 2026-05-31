@@ -24,7 +24,7 @@ exports.createArtisanProfile =
             const newProfile =
                 await ArtisanProfile.create({
                     user: req.user.id,
-                    skills,
+                        skills: skills.filter(skill => skill.trim() !== ""),
                     yearsOfExperience,
                     bio,
                     location,
@@ -75,7 +75,7 @@ exports.updateJobStatus = async (req, res) => {
             });
         }
 
-        if (job.artisan.toString() !== req.user.id) {
+        if (job.assignedArtisan.toString() !== req.user.id) {
             return res.status(403).json({
                 success: false,
                 message: "You are not assigned to this job.",
@@ -96,8 +96,7 @@ exports.updateJobStatus = async (req, res) => {
 
         const updateJob = await Job.findById(jobId)
             .populate("customer", "fullName email phone")
-            .populate("artisan", "fullName email phone");
-
+            .populate("assignedArtisan", "fullName email phone")
         return res.status(200).json({
             status: "success",
             message: "Job status updated successfully",

@@ -86,7 +86,7 @@ exports.createReview =
                     req.user.id,
 
                     artisan:
-                    job.artisan,
+                    job.assignedArtisan,
 
                     rating,
 
@@ -98,14 +98,14 @@ exports.createReview =
                 await ArtisanProfile
                     .findOne({
                         user:
-                        job.artisan
+                        job.assignedArtisan
                     });
 
             const reviews =
                 await Review
                     .find({
                         artisan:
-                        job.artisan
+                        job.assignedArtisan
                     });
 
             const total =
