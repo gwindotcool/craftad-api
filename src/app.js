@@ -7,6 +7,10 @@ const jobRoute = require("./routes/job.route")
 const reviewRoute = require("./routes/review.route")
 const notificationRoute = require("./routes/notification.route")
 const statusRoute = require("./routes/status.route")
+const paymentRoute = require("./routes/payment.route")
+const walletRoutes = require("./routes/wallet.route");
+const adminRoutes = require("./routes/admin.route");
+
 
 app.use(express.json());
 
@@ -17,6 +21,9 @@ app.use("/api/jobs", jobRoute);
 app.use("/api/reviews",  reviewRoute)
 app.use("/api/notifications", notificationRoute);
 app.use("/api/status", statusRoute);
+app.use("/api/payments", paymentRoute);
+app.use("/api/wallet", walletRoutes);
+app.use("/api/admin",adminRoutes);
 
 
 

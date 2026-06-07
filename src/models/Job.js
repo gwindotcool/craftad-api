@@ -50,9 +50,10 @@ const jobSchema = new mongoose.Schema(
                 "accepted",
                 "in-progress",
                 "completed",
-                "cancelled",
+                "paid",
+                "cancelled"
             ],
-            default: "pending",
+            default: "pending"
         },
     },
     { timestamps: true }

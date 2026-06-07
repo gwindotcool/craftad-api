@@ -43,7 +43,7 @@ exports.createJob = async (req, res) => {
                     "New Job Available",
 
                 message:
-                     `${job.title} • Budget ₦${job.budget}`,
+                    `${job.title} • Budget ₦${job.budget}`,
 
                 type: "job",
             });
@@ -119,7 +119,7 @@ exports.suggestJobs = async (req, res) => {
             data: jobs
         })
     }catch(error) {
-      return res.status(500).json({
+        return res.status(500).json({
             success: false,
             message: error.message
         })
@@ -199,7 +199,7 @@ exports.matchArtisans = async (req, res) => {
                         assignedArtisan.user._id.toString()
                     )
             );
-        
+
         return res.status(200).json({
             success: true,
             totalMatches: onlineArtisans.length,
@@ -219,7 +219,7 @@ exports.acceptJob = async (req, res) => {
         const { jobId } = req.params;
         const job = await Job.findById(jobId )
         if (!job) {
-           return res.status(404).json({
+            return res.status(404).json({
                 success: false,
                 message: 'Job not found'
             })
@@ -249,7 +249,7 @@ exports.acceptJob = async (req, res) => {
             })
         }
         job.assignedArtisan = req.user.id
-        job.status = 'accepted'
+        job.status = 'accepted';
 
         await sendNotification({
             user: job.customer,
@@ -259,6 +259,38 @@ exports.acceptJob = async (req, res) => {
         });
 
         await job.save();
+
+        const customerSocketId =
+            global.onlineUsers.get(
+                job.customer.toString()
+            );
+
+        if (customerSocketId) {
+
+            global.io.to(customerSocketId)
+                .emit("jobAccepted", {
+                    title:
+                        "Job Accepted",
+
+                    message:
+                        "An artisan has accepted your job",
+
+                    jobId: job._id
+                });
+        }
+        if (
+            customerSocketId &&
+            global.io
+        ) {
+            global.io
+                .to(customerSocketId)
+                .emit("jobAccepted", {
+                    title: "Job Accepted",
+                    message:
+                        "An artisan has accepted your job",
+                    jobId: job._id,
+                });
+        }
 
         const updatedJob =
             await Job.findById(jobId)
@@ -350,38 +382,6 @@ exports.assignArtisan = async (req, res) => {
     }
 }
 
-exports.getMyJobs = async (req, res) => {
-    try {
-
-        const jobs = await Job.find({
-            assignedArtisan: req.user.id,
-            status: "accepted"
-        })
-            .populate(
-                "customer",
-                "fullName email phone"
-            )
-            .populate(
-                "assignedArtisan",
-                "fullName email phone"
-            )
-            .sort({ createdAt: -1 });
-
-        return res.status(200).json({
-            success: true,
-            totalJobs: jobs.length,
-            data: jobs
-        });
-
-    } catch (error) {
-        return res.status(500).json({
-            success: false,
-            message: error.message
-        });
-    }
-};
-
-
 exports.updateJobStatus =
     async (req, res) => {
         try {
@@ -445,10 +445,25 @@ exports.updateJobStatus =
                 status;
 
             if (status === "completed") {
+
+                // find artisan profile
+                const artisan =
+                    await ArtisanProfile.findOne({
+                        user: job.assignedArtisan
+                    });
+
+                // increase completed jobs count
+                if (artisan) {
+                    artisan.totalJobsCompleted += 1;
+                    await artisan.save();
+                }
+
+                // notify customer
                 await sendNotification({
                     user: job.customer,
                     title: "Job Completed",
-                    message: "Your job has been marked as completed",
+                    message:
+                        "Your job has been marked as completed",
                     type: "job"
                 });
             }
@@ -540,13 +555,13 @@ exports.getCompletedJobs = async (req, res) => {
                 "completed"
         })
             .populate(
-            "customer",
-             "fullName email phone"
-        )
-             .populate(
-                 "assignedArtisan",
-                 "fullName email phone"
-        )
+                "customer",
+                "fullName email phone"
+            )
+            .populate(
+                "assignedArtisan",
+                "fullName email phone"
+            )
             .sort({
                 updatedAt: -1
             })
@@ -563,47 +578,102 @@ exports.getCompletedJobs = async (req, res) => {
     }
 }
 
-exports.getJobHistory =
-    async (req, res) => {
-        try {
+exports.getJobHistory = async (req, res) => {
+    try {
 
-            const jobs =
-                await Job.find({
-                    assignedArtisan:
-                    req.user.id,
+        const { status } = req.query;
 
-                    status: {
-                        $in: [
-                            "completed",
-                            "cancelled"
-                        ]
-                    }
-                })
-                    .populate(
-                        "customer",
-                        "fullName email phone"
-                    )
-                    .populate(
-                        "assignedArtisan",
-                        "fullName email phone"
-                    )
-                    .sort({
-                        updatedAt: -1
-                    });
+        let filter = {};
 
-            return res.status(200).json({
-                success: true,
-                totalJobs:
-                jobs.length,
-                data: jobs,
-            });
+        // customer sees only their jobs
+        if (req.user.role === "customer") {
+            filter.customer = req.user.id;
+        }
 
-        } catch (error) {
+        // artisan sees assigned jobs
+        if (req.user.role === "artisan") {
+            filter.assignedArtisan = req.user.id;
+        }
 
-            return res.status(500).json({
+        // optional filter by status
+        if (status) {
+            filter.status = status;
+        }
+
+        const jobs = await Job.find(filter)
+            .populate(
+                "customer",
+                "fullName email phone"
+            )
+            .populate(
+                "assignedArtisan",
+                "fullName email phone"
+            )
+            .sort({ createdAt: -1 });
+
+        return res.status(200).json({
+            success: true,
+            totalJobs: jobs.length,
+            data: jobs,
+        });
+
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            message: error.message,
+        });
+    }
+};
+exports.cancelJob = async (req, res) => {
+    try {
+        const { jobId } = req.params;
+
+        const job = await Job.findById(jobId);
+
+        if (!job) {
+            return res.status(404).json({
                 success: false,
-                message:
-                error.message,
+                message: "Job not found"
             });
         }
-    };
+
+        // only customer who created it
+        if (
+            job.customer.toString() !== req.user.id
+        ) {
+            return res.status(403).json({
+                success: false,
+                message:
+                    "You can only cancel your own job"
+            });
+        }
+
+        // prevent cancelling completed
+        if (
+            job.status === "completed"
+        ) {
+            return res.status(400).json({
+                success: false,
+                message:
+                    "Completed jobs cannot be cancelled"
+            });
+        }
+
+        job.status = "cancelled";
+
+        await job.save();
+
+        return res.status(200).json({
+            success: true,
+            message:
+                "Job cancelled successfully",
+            data: job
+        });
+
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+};

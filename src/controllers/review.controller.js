@@ -1,4 +1,4 @@
-const Review = require("../models/review.model");
+const Review = require("../models/Review.model");
 
 const Job = require("../models/Job");
 
@@ -100,6 +100,13 @@ exports.createReview =
                         user:
                         job.assignedArtisan
                     });
+            if (!artisan) {
+                return res.status(404).json({
+                    success: false,
+                    message:
+                        "Artisan profile not found",
+                });
+            }
 
             const reviews =
                 await Review
@@ -115,13 +122,13 @@ exports.createReview =
                     0
                 );
 
+
             artisan.ratingAverage =
                 total /
                 reviews.length;
 
-            artisan
-                .totalJobsCompleted +=
-                1;
+            artisan.totalReviews =
+                reviews.length;
 
             await artisan.save();
 
