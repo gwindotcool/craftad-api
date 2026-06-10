@@ -1,107 +1,161 @@
 const User = require("../models/User");
-
 const Job = require("../models/Job");
+const ArtisanProfile =
+    require("../models/ArtisanProfile");
 
-const Payment = require("../models/Payment");
+const PlatformWallet =
+    require("../models/PlatformWallet");
 
-const Withdrawal = require("../models/Withdrawal");
-
-exports.getDashboardStats =
+exports.getAdminStats =
     async (req, res) => {
-
         try {
 
-            // USERS
             const totalUsers =
                 await User.countDocuments();
 
+            const totalArtisans =
+                await ArtisanProfile.countDocuments();
+
             const totalCustomers =
                 await User.countDocuments({
-                    role:
-                        "customer"
+                    role: "customer"
                 });
 
-            const totalArtisans =
-                await User.countDocuments({
-                    role:
-                        "artisan"
-                });
-
-            // JOBS
             const totalJobs =
                 await Job.countDocuments();
 
             const completedJobs =
                 await Job.countDocuments({
-                    status:
-                        "completed"
-                });
-
-            const pendingJobs =
-                await Job.countDocuments({
-                    status:
-                        "pending"
+                    status: "completed"
                 });
 
             const cancelledJobs =
                 await Job.countDocuments({
-                    status:
-                        "cancelled"
+                    status: "cancelled"
                 });
 
-            // PAYMENTS
-            const payments =
-                await Payment.find({
-                    status:
-                        "released"
+            const pendingJobs =
+                await Job.countDocuments({
+                    status: "pending"
                 });
 
-            const totalPayments =
-                payments.reduce(
-                    (sum, payment) =>
-                        sum +
-                        payment.amount,
-                    0
-                );
+            const platformWallet =
+                await PlatformWallet.findOne();
 
-            // WITHDRAWALS
-            const pendingWithdrawals =
-                await Withdrawal.countDocuments({
-                    status:
-                        "pending"
+            const totalEarnings =
+                platformWallet?.totalEarnings || 0;
+
+            const totalWithdrawn =
+                platformWallet?.totalWithdrawn || 0;
+
+            const availableBalance =
+                totalEarnings -
+                totalWithdrawn;
+
+            return res.status(200)
+                .json({
+                    success: true,
+
+                    data: {
+                        totalUsers,
+                        totalArtisans,
+                        totalCustomers,
+                        totalJobs,
+                        completedJobs,
+                        cancelledJobs,
+                        pendingJobs,
+                        totalEarnings,
+                        totalWithdrawn,
+                        availableBalance
+                    }
                 });
 
-            return res.status(200).json({
-                success: true,
+        } catch (error) {
 
-                data: {
+            return res.status(500)
+                .json({
+                    success: false,
+                    message:
+                    error.message
+                });
+        }
+    };
 
-                    totalUsers,
 
-                    totalCustomers,
 
-                    totalArtisans,
+exports.withdrawPlatformFunds =
+    async (req, res) => {
+        try {
 
-                    totalJobs,
+            const { amount } =
+                req.body;
 
-                    completedJobs,
+            if (!amount || amount <= 0) {
+                return res.status(400)
+                    .json({
+                        success: false,
+                        message:
+                            "Invalid amount"
+                    });
+            }
 
-                    pendingJobs,
+            const wallet =
+                await PlatformWallet
+                    .findOne();
 
-                    cancelledJobs,
+            if (!wallet) {
+                return res.status(404)
+                    .json({
+                        success: false,
+                        message:
+                            "Platform wallet not found"
+                    });
+            }
 
-                    totalPayments,
+            const availableBalance =
+                wallet.totalEarnings -
+                wallet.totalWithdrawn;
 
-                    pendingWithdrawals
-                }
-            });
+            if (
+                amount >
+                availableBalance
+            ) {
+                return res.status(400)
+                    .json({
+                        success: false,
+                        message:
+                            "Insufficient balance"
+                    });
+            }
 
-        } catch(error) {
+            wallet.totalWithdrawn +=
+                amount;
 
-            return res.status(500).json({
-                success: false,
-                message:
-                error.message
-            });
+            await wallet.save();
+
+            return res.status(200)
+                .json({
+                    success: true,
+                    message:
+                        "Platform withdrawal successful",
+
+                    data: {
+                        amountWithdrawn:
+                        amount,
+
+                        remainingBalance:
+                            wallet.totalEarnings -
+                            wallet.totalWithdrawn
+                    }
+                });
+
+        } catch (error) {
+
+            return res.status(500)
+                .json({
+                    success: false,
+                    message:
+                    error.message
+                });
         }
     };

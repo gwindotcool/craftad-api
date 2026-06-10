@@ -2,6 +2,7 @@ const Payment = require("../models/Payment");
 const Job = require("../models/Job");
 const { sendNotification } = require("../utils/notify");
 const Wallet = require("../models/Wallet");
+const PlatformWallet = require("../models/PlatformWallet");
 
 exports.makePayment = async (req, res) => {
     try {
@@ -138,6 +139,17 @@ exports.releasePayment =
 
             await payment.save();
 
+            const PLATFORM_PERCENTAGE = 10;
+
+            const platformFee =
+                (payment.amount * PLATFORM_PERCENTAGE) / 100;
+
+            const artisanAmount =
+                payment.amount -
+                platformFee;
+
+            //Artisan wallet
+
             let wallet =
                 await Wallet.findOne({
                     user:
@@ -154,16 +166,30 @@ exports.releasePayment =
             }
 
             wallet.balance +=
-                payment.amount;
+                artisanAmount;
 
             wallet.totalEarned +=
-                payment.amount;
+                artisanAmount;
 
             await wallet.save();
 
+            //platform wallet
+            let platformWallet =
+                await PlatformWallet.findOne();
 
-            job.status =
-                "paid";
+            if (!platformWallet) {
+
+                platformWallet =
+                    await PlatformWallet.create({});
+            }
+
+            platformWallet.totalEarnings +=
+                platformFee;
+
+            await platformWallet.save();
+
+
+            job.status = "paid";
 
             await job.save();
 
@@ -185,8 +211,14 @@ exports.releasePayment =
                 success: true,
                 message:
                     "Payment released successfully",
-                data:
-                payment,
+
+                data: {
+                    payment,
+
+                    artisanAmount,
+
+                    platformFee,
+                }
             });
 
         } catch (error) {
@@ -268,6 +300,31 @@ exports.getPaymentHistory =
                     success: false,
                     message:
                     error.message,
+                });
+        }
+    };
+exports.getPlatformEarnings =
+    async (req, res) => {
+
+        try {
+
+            const wallet =
+                await PlatformWallet
+                    .findOne();
+
+            return res.status(200)
+                .json({
+                    success: true,
+                    data: wallet
+                });
+
+        } catch (error) {
+
+            return res.status(500)
+                .json({
+                    success: false,
+                    message:
+                    error.message
                 });
         }
     };

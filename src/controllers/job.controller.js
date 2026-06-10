@@ -1,7 +1,9 @@
 const Job = require('../models/Job');
 const ArtisanProfile = require('../models/ArtisanProfile');
 const {sendNotification} = require('../utils/notify');
-const {populate} = require("dotenv");
+const Application = require("../models/Application");
+
+
 
 exports.createJob = async (req, res) => {
     try {
@@ -230,6 +232,7 @@ exports.acceptJob = async (req, res) => {
                 message:
                     "No artisan has been assigned yet",
             });
+
         }
         if (
             job.assignedArtisan.toString()
@@ -245,10 +248,10 @@ exports.acceptJob = async (req, res) => {
         if (job.status !== 'pending') {
             return res.status(400).json({
                 success: false,
-                message: 'Job already accepted.'
+                message: `Cannot accept a ${job.status} job`
+
             })
         }
-        job.assignedArtisan = req.user.id
         job.status = 'accepted';
 
         await sendNotification({
@@ -264,20 +267,6 @@ exports.acceptJob = async (req, res) => {
             global.onlineUsers.get(
                 job.customer.toString()
             );
-
-        if (customerSocketId) {
-
-            global.io.to(customerSocketId)
-                .emit("jobAccepted", {
-                    title:
-                        "Job Accepted",
-
-                    message:
-                        "An artisan has accepted your job",
-
-                    jobId: job._id
-                });
-        }
         if (
             customerSocketId &&
             global.io
@@ -315,12 +304,150 @@ exports.acceptJob = async (req, res) => {
         })
     }
 }
+exports.applyForJob =
+    async (req, res) => {
+        try {
+
+            const { jobId } =
+                req.params;
+
+            const {
+                message
+            } = req.body;
+
+            const job =
+                await Job.findById(
+                    jobId
+                );
+
+            if (!job) {
+                return res
+                    .status(404)
+                    .json({
+                        success: false,
+                        message:
+                            "Job not found"
+                    });
+            }
+
+            // only pending jobs
+            if (
+                job.status !==
+                "pending"
+            ) {
+                return res
+                    .status(400)
+                    .json({
+                        success: false,
+                        message:
+                            "Job unavailable"
+                    });
+            }
+
+            // prevent duplicate application
+            const existing =
+                await Application.findOne({
+                    job: jobId,
+
+                    artisan:
+                    req.user.id
+                });
+
+            if (existing) {
+                return res
+                    .status(400)
+                    .json({
+                        success: false,
+                        message:
+                            "Already applied"
+                    });
+            }
+
+            const application =
+
+                await Application.create({
+
+                    job: jobId,
+
+                    artisan:
+                    req.user.id,
+
+                    message
+                });
+
+            return res
+                .status(201)
+                .json({
+                    success: true,
+                    message:
+                        "Application submitted",
+                    data:
+                    application
+                });
+
+        } catch (error) {
+
+            return res
+                .status(500)
+                .json({
+                    success: false,
+                    message:
+                    error.message
+                });
+        }
+    };
+exports.getJobApplications =
+    async (req, res) => {
+        try {
+
+            const { jobId } =
+                req.params;
+
+            const applications =
+                await Application.find({
+                    job: jobId
+                })
+                    .populate(
+                        "artisan",
+                        "fullName email phone"
+                    );
+
+            return res
+                .status(200)
+                .json({
+                    success: true,
+
+                    totalApplicants:
+                    applications.length,
+
+                    data:
+                    applications
+                });
+
+        } catch (error) {
+
+            return res
+                .status(500)
+                .json({
+                    success: false,
+                    message:
+                    error.message
+                });
+        }
+    };
 
 exports.assignArtisan = async (req, res) => {
     try {
         const { jobId } = req.params;
-        const { artisanId } = req.body;
+        const { artisanId } = req.body || {};
         const job = await Job.findById(jobId);
+
+        if (!job) {
+            return res.status(404).json({
+                success: false,
+                message: 'Job not found'
+            })
+        }
 
         if (job.status !== "pending") {
             return res.status(400).json({
@@ -336,20 +463,30 @@ exports.assignArtisan = async (req, res) => {
             })
         }
 
-        if (!job) {
-            return res.status(404).json({
-                success: false,
-                message: 'Job not found'
-            })
-        }
+
         // only customer who created job can assign
         if (job.customer.toString() !== req.user.id) {
-            return res.status(400).json({
+            return res.status(403).json({
                 success: false,
                 message: "You can only assign your own job",
             })
         }
         const artisan = await ArtisanProfile.findOne({user: artisanId})
+
+        const application =
+            await Application.findOne({
+                job: jobId,
+                artisan: artisanId
+            });
+
+        if (!application) {
+            return res.status(400).json({
+                success: false,
+                message:
+                    "Artisan did not apply for this job"
+            });
+        }
+
         if (!artisan) {
             return res.status(404).json({
                 success: false,
@@ -358,6 +495,7 @@ exports.assignArtisan = async (req, res) => {
         }
         job.assignedArtisan =
             artisanId;
+        job.status = "pending";
         await job.save()
 
         const updateJob = await Job.findById(jobId)
@@ -423,6 +561,7 @@ exports.updateJobStatus =
             }
 
             const validTransitions = {
+                assigned: ["accepted"],
                 accepted: ["in-progress"],
                 "in-progress": ["completed"],
             };
@@ -577,6 +716,70 @@ exports.getCompletedJobs = async (req, res) => {
         })
     }
 }
+exports.getAllJobs = async (req, res) => {
+    try {
+        const {
+            page = 1,
+            limit = 10,
+            search,
+            status,
+            category
+        } = req.query;
+        let filter = {}
+
+        if (search) {
+            filter.title = {
+                $regex: search,
+                $options: "i"
+            };
+        }
+        if (status) {
+            filter.status = status;
+        }
+
+        if (category) {
+            filter.category = category;
+        }
+        const skio =(page - 1) * limit;
+
+        const jobs = await Job.find( filter )
+            .populate(
+                "customer",
+                "fullName email"
+            )
+            .populate(
+                "assignedArtisan",
+                "fullName email"
+            )
+            .skip( Number(skio))
+            .limit( Number(limit))
+            .sort({
+                createdAt: -1
+            })
+        const totalJobs = await Job.countDocuments( filter)
+        return res.status(200).json({
+            success: true,
+            currentPage: Number(page),
+            totalPages: Math.ceil(
+                totalJobs/limit
+            ),
+            totalJobs,
+            data: jobs,
+        })
+
+
+
+    }catch(error) {
+        return res.status(500).json({
+            success: false,
+            message:error.message,
+        })
+    }
+}
+
+
+
+
 
 exports.getJobHistory = async (req, res) => {
     try {
