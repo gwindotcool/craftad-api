@@ -12,4 +12,7 @@ router.get("/dashboard", protect, authorizeRoles("admin"), adminController.getAd
 
 router.post("/withdraw", protect, authorizeRoles("admin"),adminController.withdrawPlatformFunds);
 
+router.get("/users", protect, authorizeRoles("admin"),adminController.getAllUsers);
+
+
 module.exports = router;

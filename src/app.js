@@ -1,5 +1,8 @@
 const express = require('express');
 const app = express();
+const cors = require("cors");
+app.use(cors());
+
 const healthRoute = require("./routes/health.route");
 const authRoute = require("./routes/auth.route")
 const artisanRoute = require("./routes/artisan.route")

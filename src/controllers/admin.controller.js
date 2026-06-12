@@ -159,3 +159,32 @@ exports.withdrawPlatformFunds =
                 });
         }
     };
+
+exports.getAllUsers =
+    async (req, res) => {
+        try {
+
+            const users =
+                await User.find()
+                    .select(
+                        "fullName email role createdAt"
+                    );
+
+            return res.status(200)
+                .json({
+                    success: true,
+                    count:
+                    users.length,
+                    data: users,
+                });
+
+        } catch (error) {
+
+            return res.status(500)
+                .json({
+                    success: false,
+                    message:
+                    error.message,
+                });
+        }
+    };
