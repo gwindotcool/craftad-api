@@ -520,128 +520,96 @@ exports.assignArtisan = async (req, res) => {
     }
 }
 
-exports.updateJobStatus =
-    async (req, res) => {
-        try {
-            const { jobId } =
-                req.params;
+exports.updateJobStatus = async (req, res) => {
+    try {
+        const { jobId } = req.params;
+        const { status } = req.body;
 
-            const { status } =
-                req.body;
+        const job = await Job.findById(jobId);
 
-            // find job
-            const job =
-                await Job.findById(
-                    jobId
-                );
+        if (!job) {
+            return res.status(404).json({
+                success: false,
+                message: "Job not found",
+            });
+        }
 
-            // check if job exists
-            if (!job) {
-                return res
-                    .status(404)
-                    .json({
-                        success: false,
-                        message:
-                            "Job not found",
-                    });
-            }
+        // Fix 1: crash prevention — assignedArtisan can be null
+        if (!job.assignedArtisan) {
+            return res.status(400).json({
+                success: false,
+                message: "No artisan assigned to this job yet",
+            });
+        }
 
-            // only assigned artisan
-            if (
-                job.assignedArtisan.toString() !==
-                req.user.id
-            ) {
-                return res
-                    .status(403)
-                    .json({
-                        success: false,
-                        message:
-                            "You are not assigned to this job",
-                    });
-            }
+        // Fix 2: admin can update any job, artisan can only update their own
+        if (
+            job.assignedArtisan.toString() !== req.user.id &&
+            req.user.role !== "admin"
+        ) {
+            return res.status(403).json({
+                success: false,
+                message: "You are not assigned to this job",
+            });
+        }
 
+        // Fix 3: skip transition rules for admin
+        if (req.user.role !== "admin") {
             const validTransitions = {
                 assigned: ["accepted"],
                 accepted: ["in-progress"],
                 "in-progress": ["completed"],
             };
 
-            const allowedNextStatus =
-                validTransitions[job.status] || [];
+            const allowedNextStatus = validTransitions[job.status] || [];
 
-            if (
-                !allowedNextStatus.includes(status)
-            ) {
+            if (!allowedNextStatus.includes(status)) {
                 return res.status(400).json({
                     success: false,
-                    message:
-                        `Cannot change status from ${job.status} to ${status}`,
+                    message: `Cannot change status from "${job.status}" to "${status}"`,
                 });
             }
-
-            // update status
-            job.status =
-                status;
-
-            if (status === "completed") {
-
-                // find artisan profile
-                const artisan =
-                    await ArtisanProfile.findOne({
-                        user: job.assignedArtisan
-                    });
-
-                // increase completed jobs count
-                if (artisan) {
-                    artisan.totalJobsCompleted += 1;
-                    await artisan.save();
-                }
-
-                // notify customer
-                await sendNotification({
-                    user: job.customer,
-                    title: "Job Completed",
-                    message:
-                        "Your job has been marked as completed",
-                    type: "job"
-                });
-            }
-
-            await job.save();
-
-            const updatedJob =
-                await Job.findById(
-                    jobId
-                )
-                    .populate(
-                        "customer",
-                        "fullName email phone"
-                    )
-                    .populate(
-                        "assignedArtisan",
-                        "fullName email phone"
-                    );
-
-            return res
-                .status(200)
-                .json({
-                    success: true,
-                    message:
-                        "Job status updated successfully",
-                    data:
-                    updatedJob,
-                });
-
-        } catch (error) {
-            return res
-                .status(500)
-                .json({
-                    success: false,
-                    message:
-                    error.message,
-                });
         }
-    };
+
+        job.status = status;
+
+        if (status === "completed") {
+            const artisan = await ArtisanProfile.findOne({
+                user: job.assignedArtisan,
+            });
+
+            if (artisan) {
+                artisan.totalJobsCompleted += 1;
+                await artisan.save();
+            }
+
+            await sendNotification({
+                user: job.customer,
+                title: "Job Completed",
+                message: "Your job has been marked as completed",
+                type: "job",
+            });
+        }
+
+        await job.save();
+
+        const updatedJob = await Job.findById(jobId)
+            .populate("customer", "fullName email phone")
+            .populate("assignedArtisan", "fullName email phone");
+
+        return res.status(200).json({
+            success: true,
+            message: "Job status updated successfully",
+            data: updatedJob,
+        });
+
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            message: error.message,
+        });
+    }
+};
 exports.getActiveJobs = async (req, res) => {
     try {
         const assignedArtisan = req.user.id;
@@ -840,14 +808,21 @@ exports.cancelJob = async (req, res) => {
             });
         }
 
-        // only customer who created it
+// only block if NOT the owning customer AND NOT an admin
         if (
-            job.customer.toString() !== req.user.id
+            job.customer.toString() !== req.user.id &&
+            req.user.role !== "admin"
         ) {
             return res.status(403).json({
                 success: false,
-                message:
-                    "You can only cancel your own job"
+                message: "You can only cancel your own job"
+            });
+        }
+        // prevent cancelling completed or already cancelled jobs
+        if (job.status === "completed" || job.status === "cancelled") {
+            return res.status(400).json({
+                success: false,
+                message: `Cannot cancel a job that is already ${job.status}`
             });
         }
 

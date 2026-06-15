@@ -4,7 +4,7 @@ const jwt = require("jsonwebtoken");
 
 exports.registerUser = async (req, res) => {
     try {
-        const { fullName, email ,phone , password, role } = req.body;
+        const { fullName, email ,phone , password } = req.body;
         const existingUser = await User.findOne({
             $or: [
                 {email},
@@ -25,7 +25,7 @@ exports.registerUser = async (req, res) => {
             email,
             phone,
             password: hashedPassword,
-            role,
+            role:"customer",
         })
         const userResponse = user.toObject();
         delete userResponse.password;
@@ -50,49 +50,49 @@ exports.registerUser = async (req, res) => {
 exports.loginUser = async (req, res) => {
     try {
         const { email, password } = req.body;
-        const user = await User.findOne({email})
+
+        const user = await User.findOne({ email });
         if (!user) {
             return res.status(401).json({
                 success: false,
-                message: "user not found",
-            })
+                message: "User not found",
+            });
         }
-        const isMatch = await bcrypt.compare(
-            password,
-            user.password
-        );
-        const token = jwt.sign({
-            id: user._id,
-            email: user.email,
-            role: user.role,
-        },
-            process.env.JWT_SECRET,
-            { expiresIn:"7d"}
-        );
 
+        // ✅ check password FIRST
+        const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) {
             return res.status(401).json({
                 success: false,
-                message: "incorrect password",
-            })
+                message: "Incorrect password",
+            });
         }
+
+        // ✅ only sign token if password is correct
+        const token = jwt.sign(
+            { id: user._id, email: user.email, role: user.role },
+            process.env.JWT_SECRET,
+            { expiresIn: "7d" }
+        );
+
         return res.status(200).json({
             success: true,
-            message: "login successfully",
-            data:{
+            message: "Login successful",
+            data: {
                 user: {
                     id: user._id,
                     fullName: user.fullName,
                     email: user.email,
-                    role: user.role
+                    role: user.role,
                 },
                 token,
-            }
-        })
-    }catch(error) {
+            },
+        });
+
+    } catch (error) {
         res.status(500).json({
             success: false,
-            message: error.message
-        })
+            message: error.message,
+        });
     }
-}
+};

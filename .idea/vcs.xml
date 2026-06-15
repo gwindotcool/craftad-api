@@ -1,6 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="VcsDirectoryMappings">
+    <mapping directory="$PROJECT_DIR$/../Banking App" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../FUNCTIONS" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../RAGNA BANK" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../SchoolLibraryManagementAPI" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../TASK 1" vcs="Git" />
     <mapping directory="$PROJECT_DIR$" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../iventory management system" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../phoenix cohort/VariableClass" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../productAPI" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../starter" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../temp-render" vcs="Git" />
   </component>
 </project>
