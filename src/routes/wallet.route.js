@@ -9,12 +9,46 @@ const {authorizeRoles} = require("../middleware/role.middleware");
 
 
 
+router.get(
+    "/me",
+    protect,
+    walletController.getMyWallet
+);
+
+router.post(
+    "/withdraw",
+    protect,
+    authorizeRoles("artisan"),
+    walletController.withdrawFunds
+);
+
+router.patch(
+    "/approve/:withdrawalId",
+    protect,
+    authorizeRoles("admin"),
+    walletController.approveWithdrawal
+);
+
+router.patch(
+    "/reject/:withdrawalId",
+    protect,
+    authorizeRoles("admin"),
+    walletController.rejectWithdrawal
+);
+
+router.get(
+    "/history",
+    protect,
+    walletController.getWithdrawalHistory
+);
+
+router.get(
+    "/admin/withdrawals",
+    protect,
+    authorizeRoles("admin"),
+    walletController.getAllWithdrawals
+);
 
 
-router.get("/me", protect,walletController.getMyWallet);
-
-router.post("/withdraw", protect, authorizeRoles("artisan", "admin"), walletController.withdrawFunds);
-router.patch("/approve/:withdrawalId",protect, authorizeRoles("artisan", "admin"), authorizeRoles( "admin"), walletController.approveWithdrawal);
-router.get("/history", protect, walletController.getWithdrawalHistory);
 
 module.exports = router;

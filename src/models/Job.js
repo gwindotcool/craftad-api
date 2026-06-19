@@ -47,6 +47,7 @@ const jobSchema = new mongoose.Schema(
             type: String,
             enum: [
                 "pending",
+                "assigned",
                 "accepted",
                 "in-progress",
                 "completed",

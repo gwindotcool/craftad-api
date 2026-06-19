@@ -18,56 +18,66 @@ global.io = io;
 const onlineUsers = new Map();
 global.onlineUsers = onlineUsers;
 
+io.use((socket, next) => {
+    try {
+
+        const token =
+            socket.handshake.auth.token;
+
+        if (!token) {
+            return next(
+                new Error("Authentication required")
+            );
+        }
+
+        const decoded =
+            jwt.verify(
+                token,
+                process.env.JWT_SECRET
+            );
+
+        socket.user = decoded;
+
+        next();
+
+    } catch (error) {
+
+        next(
+            new Error("Invalid token")
+        );
+    }
+});
+
 
 io.on("connection", (socket) => {
-    console.log("User connected:", socket.id);
 
-    socket.on("join", (userId) => {
+    const userId = socket.user.id;
 
-        socket.join(userId);
+    socket.join(userId);
 
-        // save online user
-        onlineUsers.set(
-            userId,
-            socket.id
-        );
+    onlineUsers.set(
+        userId,
+        socket.id
+    );
 
-        console.log(
-            `${userId} is online`
-        );
+    console.log(
+        `${userId} is online`
+    );
 
-        console.log(
-            "ONLINE USERS:",
-            [...onlineUsers.keys()]
-        );
-
-    });
+    console.log(
+        "ONLINE USERS:",
+        [...onlineUsers.keys()]
+    );
 
     socket.on(
         "disconnect",
         () => {
 
-            for (
-                const [
-                    userId,
-                    socketId
-                ] of onlineUsers
-                ) {
+            onlineUsers.delete(userId);
 
-                if (
-                    socketId === socket.id
-                ) {
-                    onlineUsers.delete(
-                        userId
-                    );
-
-                    console.log(
-                        `${userId} offline`
-                    );
-
-                    break;
-                }
-            }
+            console.log(
+                `${userId} offline`
+            );
 
             console.log(
                 "ONLINE USERS:",
@@ -76,6 +86,7 @@ io.on("connection", (socket) => {
         }
     );
 });
+
 
 connectDB()
 

@@ -4,6 +4,7 @@ const { sendNotification } = require("../utils/notify");
 const Wallet = require("../models/Wallet");
 const PlatformWallet = require("../models/PlatformWallet");
 const axios = require("axios");
+const mongoose = require("mongoose");
 
 
 exports.initializePayment =
@@ -145,160 +146,198 @@ exports.initializePayment =
 
 
 
-exports.releasePayment =
-    async (req, res) => {
-        try {
+exports.releasePayment = async (req, res) => {
 
-            const { jobId } =
-                req.params;
+    const session =
+        await mongoose.startSession();
 
-            const payment =
-                await Payment.findOne({
-                    job: jobId
-                });
+    session.startTransaction();
 
-            if (!payment) {
-                return res.status(404).json({
-                    success: false,
-                    message:
-                        "Payment not found"
-                });
-            }
+    try {
 
-            const job =
-                await Job.findById(jobId);
+        const { jobId } =
+            req.params;
 
-            // only customer
-            if (
-                job.customer.toString()
-                !== req.user.id
-            ) {
-                return res.status(403).json({
-                    success: false,
-                    message:
-                        "Only customer can release payment"
-                });
-            }
+        const payment =
+            await Payment.findOne({
+                job: jobId
+            }).session(session);
 
-            // job must be completed
-            if (
-                job.status !==
-                "completed"
-            ) {
-                return res.status(400).json({
-                    success: false,
-                    message:
-                        "Job not completed"
-                });
-            }
-
-            // prevent duplicate release
-            if (
-                payment.status ===
-                "released"
-            ) {
-                return res.status(400).json({
-                    success: false,
-                    message:
-                        "Payment already released"
-                });
-            }
-
-            payment.status =
-                "released";
-
-            await payment.save();
-
-            const PLATFORM_PERCENTAGE = 10;
-
-            const platformFee =
-                (payment.amount * PLATFORM_PERCENTAGE) / 100;
-
-            const artisanAmount =
-                payment.amount -
-                platformFee;
-
-            //Artisan wallet
-
-            let wallet =
-                await Wallet.findOne({
-                    user:
-                    payment.artisan
-                });
-
-            if (!wallet) {
-
-                wallet =
-                    await Wallet.create({
-                        user:
-                        payment.artisan
-                    });
-            }
-
-            wallet.balance +=
-                artisanAmount;
-
-            wallet.totalEarned +=
-                artisanAmount;
-
-            await wallet.save();
-
-            //platform wallet
-            let platformWallet =
-                await PlatformWallet.findOne();
-
-            if (!platformWallet) {
-
-                platformWallet =
-                    await PlatformWallet.create({});
-            }
-
-            platformWallet.totalEarnings +=
-                platformFee;
-
-            await platformWallet.save();
-
-
-            job.status = "paid";
-
-            await job.save();
-
-            await sendNotification({
-                user:
-                job.assignedArtisan,
-
-                title:
-                    "Payment Released",
-
-                message:
-                    "Customer released payment",
-
-                type:
-                    "payment",
-            });
-
-            return res.status(200).json({
-                success: true,
-                message:
-                    "Payment released successfully",
-
-                data: {
-                    payment,
-
-                    artisanAmount,
-
-                    platformFee,
-                }
-            });
-
-        } catch (error) {
-            return res.status(500).json({
+        if (!payment) {
+            await session.abortTransaction();
+            return res.status(404).json({
                 success: false,
-                message:
-                error.message,
+                message: "Payment not found"
             });
         }
-    };
+
+        const job =
+            await Job.findById(jobId)
+                .session(session);
+
+        if (!job) {
+            await session.abortTransaction();
+            return res.status(404).json({
+                success: false,
+                message: "Job not found"
+            });
+        }
+
+        // only customer
+        if (
+            !job.customer ||
+            job.customer.toString() !== req.user.id
+        ) {
+            await session.abortTransaction();
+
+            return res.status(403).json({
+                success: false,
+                message:
+                    "Only customer can release payment"
+            });
+        }
+
+        // must be completed
+        if (
+            job.status !== "completed"
+        ) {
+            await session.abortTransaction();
+
+            return res.status(400).json({
+                success: false,
+                message:
+                    "Job not completed"
+            });
+        }
+
+        // prevent duplicate release
+        if (
+            payment.status === "released"
+        ) {
+            await session.abortTransaction();
+
+            return res.status(400).json({
+                success: false,
+                message:
+                    "Payment already released"
+            });
+        }
+
+        const PLATFORM_PERCENTAGE = 10;
+
+        const platformFee =
+            (payment.amount *
+                PLATFORM_PERCENTAGE) / 100;
+
+        const artisanAmount =
+            payment.amount -
+            platformFee;
+
+        // mark payment released
+        payment.status =
+            "released";
+
+        await payment.save({
+            session
+        });
+
+        // artisan wallet
+        let wallet =
+            await Wallet.findOne({
+                user:
+                payment.artisan
+            }).session(session);
+
+        if (!wallet) {
+
+            wallet =
+                new Wallet({
+                    user: payment.artisan,
+                    balance: 0,
+                    totalEarned: 0
+                });
+        }
+
+        wallet.balance +=
+            artisanAmount;
+
+        wallet.totalEarned +=
+            artisanAmount;
+
+        await wallet.save({
+            session
+        });
+
+        // platform wallet
+        let platformWallet =
+            await PlatformWallet
+                .findOne()
+                .session(session);
+
+        if (!platformWallet) {
+
+            platformWallet =
+                new PlatformWallet({});
+        }
+
+        platformWallet.totalEarnings +=
+            platformFee;
+
+        await platformWallet.save({
+            session
+        });
+
+        // update job
+        job.status = "paid";
+
+        await job.save({
+            session
+        });
+
+        // commit everything
+        await session.commitTransaction();
+
+        // send notification AFTER commit
+        await sendNotification({
+            user:
+            job.assignedArtisan,
+
+            title:
+                "Payment Released",
+
+            message:
+                "Customer released payment",
+
+            type:
+                "payment",
+        });
+
+        return res.status(200).json({
+            success: true,
+            message:
+                "Payment released successfully",
+
+            data: {
+                payment,
+                artisanAmount,
+                platformFee,
+            }
+        });
+
+    } catch (error) {
+
+        await session.abortTransaction();
+
+        return res.status(500).json({
+            success: false,
+            message:
+            error.message,
+        });
+
+    } finally {
+
+        await session.endSession();    }
+};
 
 
 exports.getPaymentHistory =

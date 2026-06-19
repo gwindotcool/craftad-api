@@ -6,7 +6,7 @@ const { getPaymentHistory, releasePayment, getPlatformEarnings, initializePaymen
 const {authorizeRoles} = require("../middleware/role.middleware");
 
 
-router.post("/initialize/:jobId", protect, authorizeRoles("admin"),initializePayment);
+router.post("/initialize/:jobId", protect, authorizeRoles("customer"),initializePayment);
 
 router.get("/history", protect,authorizeRoles("customer", "admin"), getPaymentHistory);
 router.post("/release/:jobId", protect,authorizeRoles("customer", "admin"), releasePayment);

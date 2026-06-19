@@ -245,7 +245,7 @@ exports.acceptJob = async (req, res) => {
             });
         }
 
-        if (job.status !== 'pending') {
+        if (job.status !== 'assigned') {
             return res.status(400).json({
                 success: false,
                 message: `Cannot accept a ${job.status} job`
@@ -254,14 +254,14 @@ exports.acceptJob = async (req, res) => {
         }
         job.status = 'accepted';
 
+        await job.save();
+
         await sendNotification({
             user: job.customer,
             title: "Job Accepted",
             message: "An artisan has accepted your job",
             type: "job"
         });
-
-        await job.save();
 
         const customerSocketId =
             global.onlineUsers.get(
@@ -396,45 +396,66 @@ exports.applyForJob =
                 });
         }
     };
-exports.getJobApplications =
-    async (req, res) => {
-        try {
+exports.getJobApplications = async (req, res) => {
+    try {
 
-            const { jobId } =
-                req.params;
+        const { jobId } = req.params;
 
-            const applications =
-                await Application.find({
-                    job: jobId
-                })
-                    .populate(
-                        "artisan",
-                        "fullName email phone"
-                    );
+        const job = await Job.findById(jobId);
 
-            return res
-                .status(200)
-                .json({
-                    success: true,
-
-                    totalApplicants:
-                    applications.length,
-
-                    data:
-                    applications
-                });
-
-        } catch (error) {
-
-            return res
-                .status(500)
-                .json({
-                    success: false,
-                    message:
-                    error.message
-                });
+        if (!job) {
+            return res.status(404).json({
+                success: false,
+                message: "Job not found"
+            });
         }
-    };
+
+        // Authorization check
+        const isOwner =
+            job.customer.toString() === req.user.id;
+
+        const isAssignedArtisan =
+            job.assignedArtisan &&
+            job.assignedArtisan.toString() === req.user.id;
+
+        const isAdmin =
+            req.user.role === "admin";
+
+        if (
+            !isOwner &&
+            !isAssignedArtisan &&
+            !isAdmin
+        ) {
+            return res.status(403).json({
+                success: false,
+                message:
+                    "You are not allowed to view applications for this job"
+            });
+        }
+
+        const applications =
+            await Application.find({
+                job: jobId
+            }).populate(
+                "artisan",
+                "fullName email phone"
+            );
+
+        return res.status(200).json({
+            success: true,
+            totalApplicants:
+            applications.length,
+            data: applications
+        });
+
+    } catch (error) {
+
+        return res.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+};
 
 exports.assignArtisan = async (req, res) => {
     try {
@@ -495,8 +516,28 @@ exports.assignArtisan = async (req, res) => {
         }
         job.assignedArtisan =
             artisanId;
-        job.status = "pending";
+        job.status = "assigned";
         await job.save()
+
+        await Application.findOneAndUpdate(
+            {
+                job: jobId,
+                artisan: artisanId
+            },
+            {
+                status: "accepted"
+            }
+        );
+
+        await Application.updateMany(
+            {
+                job: jobId,
+                artisan: { $ne: artisanId }
+            },
+            {
+                status: "rejected"
+            }
+        );
 
         const updateJob = await Job.findById(jobId)
             .populate(

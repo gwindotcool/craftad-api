@@ -3,6 +3,74 @@ const ArtisanProfile = require(
 );
 const Job = require("../models/Job");
 
+
+const User =
+    require("../models/User");
+
+exports.becomeArtisan =
+    async (req, res) => {
+
+        try {
+
+            const user =
+                await User.findById(
+                    req.user.id
+                );
+
+            if (!user) {
+                return res
+                    .status(404)
+                    .json({
+                        success:
+                            false,
+                        message:
+                            "User not found",
+                    });
+            }
+
+            if (
+                user.role ===
+                "artisan"
+            ) {
+                return res
+                    .status(400)
+                    .json({
+                        success:
+                            false,
+                        message:
+                            "Already an artisan",
+                    });
+            }
+
+            user.role =
+                "artisan";
+
+            await user.save();
+
+            return res
+                .status(200)
+                .json({
+                    success:
+                        true,
+                    message:
+                        "You are now an artisan",
+                    data:
+                    user,
+                });
+
+        } catch (error) {
+
+            return res
+                .status(500)
+                .json({
+                    success:
+                        false,
+                    message:
+                    error.message,
+                });
+        }
+    };
+
 exports.createArtisanProfile =
     async (req, res) => {
         try {
@@ -24,8 +92,12 @@ exports.createArtisanProfile =
             const newProfile =
                 await ArtisanProfile.create({
                     user: req.user.id,
-                        skills: skills.filter(skill => skill.trim() !== ""),
-                    yearsOfExperience,
+                    skills: Array.isArray(skills)
+                        ? skills.filter(
+                            skill =>
+                                skill.trim() !== ""
+                        )
+                        : [],                    yearsOfExperience,
                     bio,
                     location,
                 });
