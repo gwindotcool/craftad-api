@@ -1,10 +1,12 @@
 const http = require('http');
 const { Server } = require('socket.io');
-
+require("./jobs/escrowReleaseJob");
 require('dotenv').config();
 const connectDB = require('./config/database');
 
 const app = require("./app");
+
+
 
 const server = http.createServer(app);
 

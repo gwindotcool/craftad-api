@@ -76,23 +76,6 @@ exports.createReview =
                             "Review already exists",
                     });
             }
-
-            // create review
-            const review =
-                await Review.create({
-                    job: jobId,
-
-                    customer:
-                    req.user.id,
-
-                    artisan:
-                    job.assignedArtisan,
-
-                    rating,
-
-                    comment,
-                });
-
             // update artisan stats
             const artisan =
                 await ArtisanProfile
@@ -108,27 +91,25 @@ exports.createReview =
                 });
             }
 
-            const reviews =
-                await Review
-                    .find({
-                        artisan:
-                        job.assignedArtisan
-                    });
+            // create review
+            const review = await Review.create({
+                job: jobId,
+                customer: req.user.id,
+                artisan: job.assignedArtisan,
+                rating,
+                comment
+            });
 
-            const total =
-                reviews.reduce(
-                    (sum, r) =>
-                        sum + r.rating,
-                    0
-                );
-
-
+                // update stats
             artisan.ratingAverage =
-                total /
-                reviews.length;
+                (
+                    artisan.ratingAverage *
+                    artisan.totalReviews +
+                    rating
+                ) /
+                (artisan.totalReviews + 1);
 
-            artisan.totalReviews =
-                reviews.length;
+            artisan.totalReviews += 1;
 
             await artisan.save();
 

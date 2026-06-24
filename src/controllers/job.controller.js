@@ -396,6 +396,7 @@ exports.applyForJob =
                 });
         }
     };
+
 exports.getJobApplications = async (req, res) => {
     try {
 
@@ -407,6 +408,14 @@ exports.getJobApplications = async (req, res) => {
             return res.status(404).json({
                 success: false,
                 message: "Job not found"
+            });
+        }
+
+        if (job.customer.toString() !== req.user.id && (!job.assignedArtisan || job.assignedArtisan.toString()
+            !== req.user.id) && req.user.role !== "admin") {
+            return res.status(403).json({
+                success: false,
+                message: "Unauthorized"
             });
         }
 
@@ -436,10 +445,11 @@ exports.getJobApplications = async (req, res) => {
         const applications =
             await Application.find({
                 job: jobId
-            }).populate(
-                "artisan",
-                "fullName email phone"
-            );
+            })
+                .populate(
+                    "artisan",
+                    "fullName"
+                )
 
         return res.status(200).json({
             success: true,

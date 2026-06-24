@@ -1,7 +1,10 @@
 const express = require('express');
 const app = express();
 const cors = require("cors");
+const listEndpoints = require("express-list-endpoints");
+
 app.use(cors());
+
 
 const healthRoute = require("./routes/health.route");
 const authRoute = require("./routes/auth.route")
@@ -15,7 +18,15 @@ const walletRoutes = require("./routes/wallet.route");
 const adminRoutes = require("./routes/admin.route");
 
 
-app.use(express.json());
+
+app.use(
+    express.json({
+        verify: (req, res, buf) => {
+            req.rawBody = buf;
+        }
+    })
+);
+
 
 app.use("/api", healthRoute);
 app.use("/api/auth", authRoute);
@@ -28,6 +39,7 @@ app.use("/api/payments", paymentRoute);
 app.use("/api/wallet", walletRoutes);
 app.use("/api/admin",adminRoutes);
 
+console.log(listEndpoints(app));
 
 
 module.exports = app;

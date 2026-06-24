@@ -7,18 +7,23 @@ const jobSchema = new mongoose.Schema(
             ref: "User",
             required: true,
         },
+
         assignedArtisan: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "User",
             default: null,
         },
+
         title: {
             type: String,
             required: true,
+            trim: true
         },
+
         description: {
             type: String,
             required: true,
+            trim: true
         },
 
         category: {
@@ -41,6 +46,7 @@ const jobSchema = new mongoose.Schema(
         budget: {
             type: Number,
             required: true,
+            min: 1,
         },
 
         status: {
@@ -56,11 +62,47 @@ const jobSchema = new mongoose.Schema(
             ],
             default: "pending"
         },
+
+        acceptedAt: Date,
+
+        startedAt: Date,
+
+        completedAt: Date,
+
+        paidAt: Date,
+
+        cancelledAt: Date
+
     },
-    { timestamps: true }
+    {
+        timestamps: true
+    }
 );
 
 jobSchema.index({ location: "2dsphere" });
+
+jobSchema.index({
+    customer: 1,
+    status: 1
+});
+
+jobSchema.index({
+    assignedArtisan: 1,
+    status: 1
+});
+
+jobSchema.index({
+    status: 1
+});
+jobSchema.index({
+    customer: 1,
+    createdAt: -1
+});
+
+jobSchema.index({
+    assignedArtisan: 1,
+    createdAt: -1
+});
 
 module.exports = mongoose.model(
     "Job",

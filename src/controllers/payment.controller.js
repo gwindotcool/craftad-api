@@ -1,3 +1,4 @@
+const crypto = require("crypto");
 const Payment = require("../models/Payment");
 const Job = require("../models/Job");
 const { sendNotification } = require("../utils/notify");
@@ -99,6 +100,11 @@ exports.initializePayment =
             const reference =
                 response.data.data.reference;
 
+            const AUTO_RELEASE_DAYS = 7;
+
+            const autoReleaseAt = new Date();
+            autoReleaseAt.setDate(autoReleaseAt.getDate() + AUTO_RELEASE_DAYS);
+
             // SAVE PAYMENT
             const payment =
                 await Payment.create({
@@ -114,10 +120,11 @@ exports.initializePayment =
                     job.budget,
 
                     status:
-                        "held",
+                        "pending",
 
                     transactionId:
-                    reference
+                    reference,
+                    autoReleaseAt
                 });
 
             return res.status(200)
@@ -145,7 +152,6 @@ exports.initializePayment =
     };
 
 
-
 exports.releasePayment = async (req, res) => {
 
     const session =
@@ -158,36 +164,20 @@ exports.releasePayment = async (req, res) => {
         const { jobId } =
             req.params;
 
-        const payment =
-            await Payment.findOne({
-                job: jobId
-            }).session(session);
-
-        if (!payment) {
-            await session.abortTransaction();
-            return res.status(404).json({
-                success: false,
-                message: "Payment not found"
-            });
-        }
-
-        const job =
-            await Job.findById(jobId)
-                .session(session);
+        const job = await Job.findById(jobId)
+            .session(session);
 
         if (!job) {
             await session.abortTransaction();
+
             return res.status(404).json({
-                success: false,
-                message: "Job not found"
+                success:false,
+                message:"Job not found"
             });
         }
 
         // only customer
-        if (
-            !job.customer ||
-            job.customer.toString() !== req.user.id
-        ) {
+        if (!job.customer || job.customer.toString() !== req.user.id) {
             await session.abortTransaction();
 
             return res.status(403).json({
@@ -197,64 +187,64 @@ exports.releasePayment = async (req, res) => {
             });
         }
 
-        // must be completed
-        if (
-            job.status !== "completed"
-        ) {
+        if (job.status !== "completed") {
             await session.abortTransaction();
 
             return res.status(400).json({
-                success: false,
-                message:
-                    "Job not completed"
+                success:false,
+                message:"Job not completed"
             });
         }
 
-        // prevent duplicate release
-        if (
-            payment.status === "released"
-        ) {
+        const releasedPayment =
+            await Payment.findOneAndUpdate(
+                {
+                    job: jobId,
+                    status:"held"
+                },
+                {
+                    $set: {
+                        status: "released",
+                        releasedAt: new Date()
+                    }
+                },
+                {
+                    new:true,
+                    session
+                }
+            );
+
+        if (!releasedPayment) {
             await session.abortTransaction();
 
             return res.status(400).json({
                 success: false,
-                message:
-                    "Payment already released"
+                message: "Payment not found, already released, or not yet verified"
             });
         }
 
         const PLATFORM_PERCENTAGE = 10;
 
         const platformFee =
-            (payment.amount *
+            (releasedPayment.amount *
                 PLATFORM_PERCENTAGE) / 100;
 
         const artisanAmount =
-            payment.amount -
+            releasedPayment.amount -
             platformFee;
 
-        // mark payment released
-        payment.status =
-            "released";
-
-        await payment.save({
-            session
-        });
 
         // artisan wallet
         let wallet =
             await Wallet.findOne({
                 user:
-                payment.artisan
+                releasedPayment.artisan
             }).session(session);
 
         if (!wallet) {
-
             wallet =
                 new Wallet({
-                    user: payment.artisan,
-                    balance: 0,
-                    totalEarned: 0
+                    user: releasedPayment.artisan
                 });
         }
 
@@ -277,7 +267,9 @@ exports.releasePayment = async (req, res) => {
         if (!platformWallet) {
 
             platformWallet =
-                new PlatformWallet({});
+                new PlatformWallet({
+                    totalEarnings:0
+                });
         }
 
         platformWallet.totalEarnings +=
@@ -317,10 +309,10 @@ exports.releasePayment = async (req, res) => {
             message:
                 "Payment released successfully",
 
-            data: {
-                payment,
+            data:{
+                payment: releasedPayment,
                 artisanAmount,
-                platformFee,
+                platformFee
             }
         });
 
@@ -412,14 +404,22 @@ exports.getPaymentHistory =
                 });
         }
     };
+
 exports.getPlatformEarnings =
     async (req, res) => {
 
         try {
 
-            const wallet =
+            let wallet =
                 await PlatformWallet
                     .findOne();
+
+            if(!wallet){
+                wallet =
+                    await PlatformWallet.create({
+                        totalEarnings:0
+                    });
+            }
 
             return res.status(200)
                 .json({
@@ -437,121 +437,225 @@ exports.getPlatformEarnings =
                 });
         }
     };
+//
+// exports.verifyPayment =
+//     async (req, res) => {
+//         try {
+//
+//             const { reference } =
+//                 req.params;
+//
+//             // verify from paystack
+//             const response =
+//                 await axios.get(
+//                     `https://api.paystack.co/transaction/verify/${reference}`,
+//                     {
+//                         headers: {
+//                             Authorization:
+//                                 `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
+//                         },
+//                     }
+//                 );
+//
+//             const paymentData =
+//                 response.data.data;
+//
+//             // payment failed
+//             if (
+//                 paymentData.status !==
+//                 "success"
+//             ) {
+//                 return res.status(400)
+//                     .json({
+//                         success: false,
+//                         message:
+//                             "Payment verification failed",
+//                     });
+//             }
+//
+//             // find payment in DB
+//             const payment =
+//                 await Payment.findOne({
+//                     transactionId:
+//                     reference,
+//                 });
+//
+//             if (!payment) {
+//                 return res.status(404)
+//                     .json({
+//                         success: false,
+//                         message:
+//                             "Payment record not found",
+//                     });
+//             }
+//
+//             // avoid duplicate verification
+//             if (
+//                 payment.status ===
+//                 "held"
+//             ) {
+//                 return res.status(400)
+//                     .json({
+//                         success: false,
+//                         message:
+//                             "Payment already verified",
+//                     });
+//             }
+//
+//
+//             if(payment.status === "released"){
+//                 return res.status(400).json({
+//                     success:false,
+//                     message:"Payment already released"
+//                 });
+//             }
+//
+//             await Payment.findOneAndUpdate(
+//                 {
+//                     transactionId:reference,
+//                     status:"pending"
+//                 },
+//                 {
+//                     $set:{
+//                         status:"held"
+//                     }
+//                 },
+//                 { new: true}
+//             );
+//
+//             // notify artisan
+//             await sendNotification({
+//                 user:
+//                 payment.artisan,
+//
+//                 title:
+//                     "Payment Received",
+//
+//                 message:
+//                     "Customer has paid for the job",
+//
+//                 type:
+//                     "payment",
+//             });
+//
+//             return res.status(200)
+//                 .json({
+//                     success: true,
+//                     message:
+//                         "Payment verified successfully",
+//
+//                     data:
+//                     payment,
+//                 });
+//
+//         } catch (error) {
+//
+//             return res.status(500)
+//                 .json({
+//                     success: false,
+//                     message:
+//                     error.message,
+//                 });
+//         }
+//     };
 
-exports.verifyPayment =
-    async (req, res) => {
-        try {
+exports.paystackWebhook = async (req, res) => {
+    try {
 
-            const { reference } =
-                req.params;
+        // Verify Paystack signature
+        const hash = crypto
+            .createHmac(
+                "sha512",
+                process.env.PAYSTACK_SECRET_KEY
+            )
+            .update(req.rawBody)
+            .digest("hex");
 
-            // verify from paystack
-            const response =
-                await axios.get(
-                    `https://api.paystack.co/transaction/verify/${reference}`,
-                    {
-                        headers: {
-                            Authorization:
-                                `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
-                        },
-                    }
-                );
+        if (
+            hash !== req.headers["x-paystack-signature"]
+        ) {
+            return res.status(401).json({
+                success: false,
+                message: "Invalid signature"
+            });
+        }
 
-            const paymentData =
-                response.data.data;
+        const event = req.body;
 
-            // payment failed
-            if (
-                paymentData.status !==
-                "success"
-            ) {
-                return res.status(400)
-                    .json({
-                        success: false,
-                        message:
-                            "Payment verification failed",
-                    });
-            }
+        // Ignore events we don't care about
+        if (event.event !== "charge.success") {
+            return res.status(200).json({
+                success: true,
+                message: "Event ignored"
+            });
+        }
 
-            // find payment in DB
-            const payment =
-                await Payment.findOne({
-                    transactionId:
-                    reference,
-                });
+        const reference =
+            event.data.reference;
 
-            if (!payment) {
-                return res.status(404)
-                    .json({
-                        success: false,
-                        message:
-                            "Payment record not found",
-                    });
-            }
-
-            // avoid duplicate verification
-            if (
-                payment.status ===
-                "held"
-            ) {
-                return res.status(400)
-                    .json({
-                        success: false,
-                        message:
-                            "Payment already verified",
-                    });
-            }
-
-            // update payment
-            payment.status =
-                "held";
-
-            await payment.save();
-
-            // update job
-            const job =
-                await Job.findById(
-                    payment.job
-                );
-
-            job.status =
-                "paid";
-
-            await job.save();
-
-            // notify artisan
-            await sendNotification({
-                user:
-                payment.artisan,
-
-                title:
-                    "Payment Received",
-
-                message:
-                    "Customer has paid for the job",
-
-                type:
-                    "payment",
+        // Find payment
+        const payment =
+            await Payment.findOne({
+                transactionId: reference
             });
 
-            return res.status(200)
-                .json({
-                    success: true,
-                    message:
-                        "Payment verified successfully",
-
-                    data:
-                    payment,
-                });
-
-        } catch (error) {
-
-            return res.status(500)
-                .json({
-                    success: false,
-                    message:
-                    error.message,
-                });
+        if (!payment) {
+            return res.status(404).json({
+                success: false,
+                message: "Payment not found"
+            });
         }
-    };
+
+        // Prevent duplicate processing
+        if (
+            payment.status === "held" ||
+            payment.status === "released"
+        ) {
+            return res.status(200).json({
+                success: true,
+                message: "Payment already processed"
+            });
+        }
+
+// Move payment into escrow
+        payment.status = "held";
+
+// Auto-release after 7 days
+        payment.autoReleaseAt = new Date(
+            Date.now() + 7 * 24 * 60 * 60 * 1000
+        );
+
+        await payment.save();
+
+        // Update job if necessary
+        const job =
+            await Job.findById(payment.job);
+
+        if (job) {
+            await job.save();
+        }
+
+        // Notify artisan
+        await sendNotification({
+            user: payment.artisan,
+            title: "Payment Received",
+            message:
+                "Customer has paid. Funds are held in escrow.",
+            type: "payment"
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: "Webhook processed successfully"
+        });
+
+    } catch (error) {
+
+        return res.status(500).json({
+            success: false,
+            message: error.message
+        });
+
+    }
+};
 

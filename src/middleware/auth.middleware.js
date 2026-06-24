@@ -16,20 +16,32 @@ exports.protect = async  (req, res, next) => {
            }
         if (!token) {
             return res.status(401).json({
-                success: false,
-                message: "Not authorized,Invalid token",
-            })
+                success:false,
+                message:"No token provided"
+            });
         }
+
         const decoded = jwt.verify(
             token,
             process.env.JWT_SECRET
         );
+
+        const user = await User.findById(decoded.id);
+
+        if (!user) {
+            return res.status(401).json({
+                success:false,
+                message:"User no longer exists"
+            });
+        }
+
         req.user = decoded;
-        next();
+       return next();
+
     }catch(error) {
-        res.status(401).json({
+       return res.status(401).json({
             success: false,
-            message: "Not authorized,Invalid token",
+            message: "Invalid or expired token",
         })
     }
 
