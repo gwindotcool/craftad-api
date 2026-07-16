@@ -75,6 +75,25 @@ exports.withdrawFunds = async (req, res) => {
 
         await wallet.save();
 
+        await createTransaction({
+
+            user: artisan._id,
+
+            type:"earning",
+
+            amount,
+
+            direction:"credit",
+
+            description:
+                "Payment received for completed job",
+
+            job:job._id,
+
+            session
+
+        });
+
 
         const withdrawal = await Withdrawal.create({
             user: req.user.id,
@@ -175,11 +194,41 @@ exports.approveWithdrawal =
                     message:"Insufficient wallet balance"
                 });
             }
+
+            if(wallet.pendingWithdrawals < withdrawal.amount){
+
+                console.log(
+                    "Wallet pending withdrawal mismatch",
+                    {
+                        walletPending: wallet.pendingWithdrawals,
+                        withdrawalAmount: withdrawal.amount
+                    }
+                );
+            }
             wallet.balance -= withdrawal.amount;
 
-            wallet.pendingWithdrawals -= withdrawal.amount;
+            wallet.pendingWithdrawals = Math.max(
+                0,
+                wallet.pendingWithdrawals - withdrawal.amount
+            );
 
             wallet.totalWithdrawn += withdrawal.amount;
+            await createTransaction({
+
+                user:withdrawal.user,
+
+                type:"withdrawal",
+
+                amount:withdrawal.amount,
+
+                direction:"debit",
+
+                description:
+                    "Withdrawal approved",
+
+                session
+
+            });
 
             await wallet.save({session});
 
@@ -200,6 +249,8 @@ exports.approveWithdrawal =
             });
 
         } catch(error) {
+            console.log("APPROVE WITHDRAWAL ERROR:", error);
+
             await session.abortTransaction();
             return res.status(500).json({
                 success: false,
@@ -283,62 +334,48 @@ exports.rejectWithdrawal =
     }
     };
 
-exports.getWithdrawalHistory =
-    async (req, res) => {
+exports.getWithdrawalHistory = async (req,res)=>{
+    try {
 
-        try {
+        const filter = {};
 
-            let filter = {};
-
-            // artisan sees only theirs
-            if (
-                req.user.role ===
-                "artisan"
-            ) {
-                filter.user =
-                    req.user.id;
-            }
-
-            // optional status filter
-            const { status } =
-                req.query;
-
-            if (status) {
-                filter.status =
-                    status;
-            }
-
-            const withdrawals =
-                await Withdrawal.find(
-                    filter
-                )
-                    .populate(
-                        "user",
-                        "fullName email phone"
-                    )
-                    .sort({
-                        createdAt: -1
-                    });
-
-            return res.status(200).json({
-                success: true,
-
-                totalWithdrawals:
-                withdrawals.length,
-
-                data:
-                withdrawals
-            });
-
-        } catch(error) {
-
-            return res.status(500).json({
-                success: false,
-                message:
-                error.message
-            });
+        if(req.user.role !== "admin"){
+            filter.user = req.user.id;
         }
-    };
+
+
+        if(req.query.status){
+            filter.status = req.query.status;
+        }
+
+
+        const withdrawals =
+            await Withdrawal.find(filter)
+                .populate(
+                    "user",
+                    "fullName email phone"
+                )
+                .sort({
+                    createdAt:-1
+                });
+
+
+        res.status(200).json({
+            success:true,
+            totalWithdrawals:withdrawals.length,
+            data:withdrawals
+        });
+
+
+    } catch(error){
+
+        res.status(500).json({
+            success:false,
+            message:error.message
+        });
+
+    }
+};
 
 exports.getAllWithdrawals = async (req,res)=>{
     try{

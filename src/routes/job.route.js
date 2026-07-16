@@ -20,7 +20,7 @@ router.get('/suggested', protect, authorizeRoles("artisan", "admin"), suggestJob
 router.get('/active-jobs', protect, authorizeRoles("artisan", "admin"), getActiveJobs);
 router.get('/', protect, authorizeRoles("artisan", "admin"), getAllJobs);
 
-router.get('/history', protect, authorizeRoles("artisan", "admin"), getJobHistory);
+router.get('/history', protect, authorizeRoles("artisan", "admin","customer"), getJobHistory);
 router.patch('/cancel/:jobId',protect, authorizeRoles("customer", "admin"), cancelJob);
 
 

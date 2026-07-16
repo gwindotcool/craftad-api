@@ -24,31 +24,39 @@ exports.createJob = async (req, res) => {
                     "user",
                     "fullName email phone"
                 );
+
         const onlineArtisans =
             matchedArtisans.filter(
                 (artisan) =>
+                    global.onlineUsers &&
                     global.onlineUsers.has(
-                        assignedArtisan.user._id.toString()
+                        artisan.user._id.toString()
                     )
             );
+        console.log("Created Job:");
+        console.log(job.location);
+        console.log(job.category);
 
-        for (
-            const artisan
-            of onlineArtisans
-            ) {
+        for (const artisan of onlineArtisans) {
 
-            await sendNotification({
-                user:
-                assignedArtisan.user._id,
+            try {
 
-                title:
-                    "New Job Available",
+                await sendNotification({
+                    user: artisan.user._id,
+                    title:"New Job Available",
+                    message:`${job.title}`,
+                    type:"job"
+                });
 
-                message:
-                    `${job.title} • Budget ₦${job.budget}`,
+            } catch(err){
 
-                type: "job",
-            });
+                console.log(
+                    "Notification failed:",
+                    err.message
+                );
+
+            }
+
         }
 
         await sendNotification({
@@ -63,6 +71,7 @@ exports.createJob = async (req, res) => {
             data: job,
         });
     }catch(error) {
+        console.log(error);
         res.status(500).json({
             success: false,
             message: error.message
@@ -78,42 +87,48 @@ exports.suggestJobs = async (req, res) => {
                 .findOne({
                     user:req.user.id
                 })
+
         if (!artisan) {
             return res.status(404).json({
                 success: false,
                 message: 'Artisan profile not found'
             })
         }
-        const jobs =
-            await Job.find({
 
-                category: {
-                    $in:
-                    assignedArtisan.skills
-                },
+        console.log("Artisan:", artisan.skills);
+        console.log("Artisan location:", artisan.location.coordinates);
 
-                status:
-                    "pending",
+        if(!artisan.location?.coordinates?.length){
 
-                location: {
-                    $near: {
-                        $geometry: {
-                            type:
-                                "Point",
+            return res.status(400).json({
+                success:false,
+                message:"Artisan location not set"
+            });
 
-                            coordinates:
-                            artisan.location.coordinates
-                        },
+        }
 
-                        $maxDistance:
-                            10000
-                    }
+        const jobs = await Job.find({
+            category: {
+                $in: artisan.skills
+            },
+            status: "pending",
+            location: {
+                $near: {
+                    $geometry: {
+                        type: "Point",
+                        coordinates: artisan.location.coordinates
+                    },
+                    $maxDistance: artisan.serviceRadiusKm * 1000
                 }
-            })
-                .populate(
-                    "customer",
-                    "fullName phone"
-                )
+            }
+        }).populate(
+            "customer",
+            "fullName phone"
+        );
+        console.log("Jobs found:", jobs.length);
+
+
+        console.log(jobs); // <-- AFTER declaration
         return res.status(200).json({
             success: true,
             totalJobs:
@@ -121,6 +136,8 @@ exports.suggestJobs = async (req, res) => {
             data: jobs
         })
     }catch(error) {
+        console.log(error);
+
         return res.status(500).json({
             success: false,
             message: error.message
@@ -195,10 +212,11 @@ exports.matchArtisans = async (req, res) => {
             }
         }
         const onlineArtisans =
-            artisans.filter(
+            matchedArtisans.filter(
                 (artisan) =>
+                    global.onlineUsers &&
                     global.onlineUsers.has(
-                        assignedArtisan.user._id.toString()
+                        artisan.user._id.toString()
                     )
             );
 

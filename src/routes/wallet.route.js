@@ -6,6 +6,7 @@ const router = express.Router();
 const walletController = require("../controllers/wallet.controller");
 const {protect} = require("../middleware/auth.middleware");
 const {authorizeRoles} = require("../middleware/role.middleware");
+const {getTransactions} = require("../controllers/transaction.controller");
 
 
 
@@ -47,6 +48,11 @@ router.get(
     protect,
     authorizeRoles("admin"),
     walletController.getAllWithdrawals
+);
+
+router.get(
+    "/transactions",
+    protect,getTransactions
 );
 
 

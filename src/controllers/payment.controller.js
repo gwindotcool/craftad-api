@@ -200,7 +200,8 @@ exports.releasePayment = async (req, res) => {
             await Payment.findOneAndUpdate(
                 {
                     job: jobId,
-                    status:"held"
+                    status:"held",
+                    isAutoReleased: false
                 },
                 {
                     $set: {

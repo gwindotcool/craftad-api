@@ -1,36 +1,55 @@
-const Notification =
-    require("../models/Notification.model");
+const Notification = require("../models/Notification.model");
+
+const { getIO } = require("../sockets/sockets");
 
 exports.sendNotification = async ({
+
                                       user,
+
                                       title,
+
                                       message,
+
                                       type = "system",
+
                                   }) => {
-    console.log("NOTIFICATION FUNCTION HIT");
 
-    const userId =
-        user?._id
-            ? user._id.toString()
-            : user.toString();
+    try {
 
-    console.log("EMIT TARGET:", userId);
+        const userId =
 
-    const notification =
-        await Notification.create({
+            user?._id
+
+                ? user._id.toString()
+
+                : user.toString();
+
+// Save to database
+
+        const notification = await Notification.create({
+
             user: userId,
+
             title,
+
             message,
+
             type,
+
         });
 
-    console.log("EMITTING NOW...");
+// Emit in real-time
 
-    global.io
-        .to(userId)
-        .emit("notification", notification);
+        const io = getIO();
 
-    console.log("EMIT DONE");
+        io.to(userId).emit("notification", notification);
 
-    return notification;
+        return notification;
+
+    } catch (error) {
+
+        console.error("Notification error:", error.message);
+
+    }
+
 };

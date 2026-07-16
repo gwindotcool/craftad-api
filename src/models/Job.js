@@ -62,6 +62,35 @@ const jobSchema = new mongoose.Schema(
             ],
             default: "pending"
         },
+        paymentStatus:{
+            type:String,
+            enum:[
+                "unpaid",
+                "escrow",
+                "released",
+                "refunded"
+            ],
+            default:"unpaid"
+        },
+
+        paymentReference:{
+            type:String,
+            default:null
+        },
+
+        applicationCount:{
+            type:Number,
+            default:0
+        },
+
+        priority:{
+            type:String,
+            enum:[
+                "normal",
+                "urgent"
+            ],
+            default:"normal"
+        },
 
         acceptedAt: Date,
 

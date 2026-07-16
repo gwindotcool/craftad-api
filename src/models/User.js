@@ -40,7 +40,6 @@ const userSchema = new mongoose.Schema({
             type: {
                 type: String,
                 enum: ["Point"],
-                default: "Point",
             },
             coordinates: {
                 type: [Number],
@@ -54,6 +53,6 @@ userSchema.index({role: 1});
 
 userSchema.index({isOnline: 1});
 
-userSchema.index({role: 1, "location.coordinates": "2dsphere"});
+userSchema.index({role: 1, "location.coordinates": "2dsphere"},{sparse: true});
 
 module.exports = mongoose.models.User || mongoose.model("User", userSchema);

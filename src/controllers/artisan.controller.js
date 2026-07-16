@@ -74,6 +74,7 @@ exports.becomeArtisan =
 exports.createArtisanProfile =
     async (req, res) => {
         try {
+            console.log(req.body);
             const {
                 skills,
                 yearsOfExperience,
@@ -120,12 +121,59 @@ exports.createArtisanProfile =
             });
 
         } catch (error) {
+            console.log(error);
+
             return res.status(500).json({
                 success: false,
                 message: error.message,
             });
         }
     };
+
+exports.updateArtisanProfile = async (req, res) => {
+    try {
+        const {
+            skills,
+            yearsOfExperience,
+            bio,
+            serviceAreas,
+            serviceRadiusKm,
+            location
+        } = req.body;
+
+        const profile = await ArtisanProfile.findOne({
+            user: req.user.id
+        });
+
+        if (!profile) {
+            return res.status(404).json({
+                success: false,
+                message: "Artisan profile not found"
+            });
+        }
+
+        profile.skills = skills;
+        profile.yearsOfExperience = yearsOfExperience;
+        profile.bio = bio;
+        profile.serviceAreas = serviceAreas;
+        profile.serviceRadiusKm = serviceRadiusKm;
+        profile.location = location;
+
+        await profile.save();
+
+        return res.status(200).json({
+            success: true,
+            message: "Profile updated successfully",
+            data: profile
+        });
+
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+};
 exports.updateJobStatus = async (req, res) => {
     try {
         const { jobId } = req.params;
