@@ -66,6 +66,37 @@ const releaseEscrowPayments = async () => {
             }
 
             wallet.balance += artisanAmount;
+
+            const before = wallet.balance;
+
+            wallet.balance += artisanAmount;
+
+            await wallet.save();
+
+            await createTransaction({
+
+                user: releasedPayment.artisan,
+
+                wallet: releasedPayment._id,
+
+                payment: payment._id,
+
+                job: job._id,
+
+                type: "earning",
+
+                amount: artisanAmount,
+
+                balanceBefore: before,
+
+                balanceAfter: wallet.balance,
+
+                description:
+                    "Payment released"
+
+            });
+
+
             wallet.totalEarned += artisanAmount;
             await wallet.save();
 
@@ -77,6 +108,20 @@ const releaseEscrowPayments = async () => {
             }
 
             platformWallet.totalEarnings += platformFee;
+
+            await createTransaction({
+
+                user: null,
+
+                type: "platform_fee",
+
+                amount: platformFee,
+
+                description:
+                    "Marketplace commission"
+
+            });
+
             await platformWallet.save();
 
             // update job

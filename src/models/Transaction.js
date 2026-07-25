@@ -1,80 +1,87 @@
 const mongoose = require("mongoose");
 
+const transactionSchema = new mongoose.Schema(
+    {
+        user: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+            required: true,
+        },
 
-const transactionSchema = new mongoose.Schema({
+        wallet: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Wallet",
+        },
 
-    user:{
-        type:mongoose.Schema.Types.ObjectId,
-        ref:"User",
-        required:true
+        payment: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Payment",
+        },
+
+        withdrawal: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Withdrawal",
+        },
+
+        job: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Job",
+        },
+
+        type: {
+            type: String,
+            enum: [
+                "escrow_hold",
+                "escrow_release",
+                "earning",
+                "withdrawal",
+                "withdrawal_reversal",
+                "refund",
+                "platform_fee",
+            ],
+            required: true,
+        },
+
+        amount: {
+            type: Number,
+            required: true,
+        },
+
+        balanceBefore: {
+            type: Number,
+            default: 0,
+        },
+
+        balanceAfter: {
+            type: Number,
+            default: 0,
+        },
+
+        status: {
+            type: String,
+            enum: ["pending", "successful", "failed"],
+            default: "successful",
+        },
+
+        reference: {
+            type: String,
+            required: true,
+            unique: true,
+        },
+
+        description: {
+            type: String,
+            default: "",
+        },
     },
-
-
-    type:{
-        type:String,
-        enum:[
-            "earning",
-            "withdrawal",
-            "payment",
-            "refund"
-        ],
-        required:true
-    },
-
-
-    amount:{
-        type:Number,
-        required:true,
-        min:0
-    },
-
-
-    direction:{
-        type:String,
-        enum:[
-            "credit",
-            "debit"
-        ],
-        required:true
-    },
-
-
-    status:{
-        type:String,
-        enum:[
-            "pending",
-            "successful",
-            "failed"
-        ],
-        default:"successful"
-    },
-
-
-    reference:{
-        type:String,
-        unique:true
-    },
-
-
-    description:{
-        type:String
-    },
-
-
-    job:{
-        type:mongoose.Schema.Types.ObjectId,
-        ref:"Job"
+    {
+        timestamps: true,
     }
+);
 
-
-},{
-    timestamps:true
-});
-
-
+transactionSchema.index({ user: 1, createdAt: -1 });
+transactionSchema.index({ reference: 1 });
 
 module.exports =
-    mongoose.model(
-        "Transaction",
-        transactionSchema
-    );
+    mongoose.models.Transaction ||
+    mongoose.model("Transaction", transactionSchema);

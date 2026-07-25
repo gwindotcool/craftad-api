@@ -6,6 +6,7 @@ const Wallet = require("../models/Wallet");
 const PlatformWallet = require("../models/PlatformWallet");
 const axios = require("axios");
 const mongoose = require("mongoose");
+const {createTransaction,} = require("../services/transaction.service");
 
 
 exports.initializePayment =
@@ -249,17 +250,39 @@ exports.releasePayment = async (req, res) => {
                 });
         }
 
-        wallet.balance +=
-            artisanAmount;
+        const balanceBefore =
+            wallet.balance;
 
-        wallet.totalEarned +=
-            artisanAmount;
+        wallet.balance += artisanAmount;
 
-        await wallet.save({
-            session
+        wallet.totalEarned += artisanAmount;
+
+        await wallet.save();
+
+        await createTransaction({
+
+            user: payment.artisan,
+
+            wallet: wallet._id,
+
+            payment: payment._id,
+
+            job: job._id,
+
+            type: "earning",
+
+            amount: artisanAmount,
+
+            balanceBefore,
+
+            balanceAfter: wallet.balance,
+
+            description:
+                "Escrow payment released"
+
         });
-
         // platform wallet
+
         let platformWallet =
             await PlatformWallet
                 .findOne()
