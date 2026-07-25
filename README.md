@@ -1,20 +1,25 @@
 # Craftad Backend API
 
-A secure backend API for **Craftad**, a handyman marketplace that connects customers with skilled artisans. The platform supports job posting, artisan matching, escrow payments, wallet management, notifications, reviews, and an admin dashboard.
+## Overview
+
+Craftad is a backend service for a handyman marketplace that connects customers with verified artisans. Customers can post jobs, artisans can apply and complete work, and payments are handled through an escrow system to ensure secure transactions.
+
+The backend is built with Node.js, Express, and MongoDB using a modular architecture that supports authentication, wallet management, notifications, and payment processing.
 
 ---
 
 # Features
 
-## Authentication & Authorization
+## Authentication
 
-* JWT Authentication
-* Role-based access control
+* User registration
+* Secure login with JWT
+* Role-based authorization
 * Customer accounts
 * Artisan accounts
 * Admin accounts
 * Protected routes
-* Password hashing using bcrypt
+* Password hashing with bcrypt
 
 ---
 
@@ -22,11 +27,10 @@ A secure backend API for **Craftad**, a handyman marketplace that connects custo
 
 * Become an artisan
 * Create artisan profile
-* Manage skills
-* Service location
-* GeoJSON location support
-* Nearby artisan matching
-* Availability status
+* Update artisan profile
+* Skill matching
+* Location-based artisan search
+* Experience tracking
 
 ---
 
@@ -38,78 +42,69 @@ Customers can:
 * View jobs
 * Assign artisans
 * Cancel jobs
+* Track job progress
 
 Artisans can:
 
 * View suggested jobs
 * Apply for jobs
 * Accept assigned jobs
-* Update job progress
-* Complete jobs
-
-Job lifecycle:
-
-Pending
-
-↓
-
-Assigned
-
-↓
-
-Accepted
-
-↓
-
-In Progress
-
-↓
-
-Completed
-
-↓
-
-Paid
+* Update job status
+* View active jobs
+* View completed jobs
 
 ---
 
-## Reviews
+## Job Lifecycle
 
-Customers can:
-
-* Leave reviews
-* Rate artisans
-* Improve artisan reputation
+```text
+Pending
+    ↓
+Assigned
+    ↓
+Accepted
+    ↓
+In Progress
+    ↓
+Completed
+    ↓
+Paid
+```
 
 ---
 
 ## Escrow Payment System
 
-Integrated with **Paystack**
+Craftad uses an escrow-based payment flow.
 
-Flow:
+### Payment Flow
 
-Customer creates job
-
-↓
-
-Customer pays
-
-↓
-
-Payment enters escrow
-
-↓
-
-Artisan completes work
-
-↓
-
-Customer releases payment
-
-OR
-
-Automatic release after 7 days
+```text
+Customer
+      │
+      ▼
+Initialize Payment
+      │
+      ▼
+Paystack Payment
+      │
+      ▼
+Payment Verification
+      │
+      ▼
+Escrow (Held)
+      │
+      ├──────────────► Customer Releases Payment
+      │
+      └──────────────► Auto Release after 7 days
+                       (Cron Job)
+      │
+      ▼
+Artisan Wallet
+      │
+      ▼
+Withdrawal
+```
 
 ---
 
@@ -117,166 +112,165 @@ Automatic release after 7 days
 
 Each artisan has:
 
-* Wallet balance
+* Available balance
 * Total earnings
-* Withdrawal requests
 * Withdrawal history
 
-Platform has:
+Supports:
 
-* Platform wallet
-* Marketplace commission tracking
+* Withdrawal requests
+* Admin approval
+* Admin rejection
 
 ---
 
-## Transaction System
+## Platform Earnings
 
-Every money movement is recorded.
+The platform deducts a commission from every completed payment.
 
-Supported transaction types:
+Example:
+
+Customer pays:
+
+₦100,000
+
+Platform fee (10%):
+
+₦10,000
+
+Artisan receives:
+
+₦90,000
+
+---
+
+## Transaction History
+
+All financial activity is recorded.
+
+Transaction types include:
 
 * Escrow payment
 * Earnings
 * Withdrawal
+* Refund
 * Platform commission
-* Refund (planned)
 
-Each transaction stores:
-
-* Amount
-* Previous balance
-* New balance
-* Payment reference
-* Job reference
-* Timestamp
-* Description
+This ensures full audit tracking.
 
 ---
 
-## Notifications
+## Notification System
 
 Real-time notifications using Socket.IO.
 
 Examples:
 
-* New job nearby
-* Job assigned
+* New nearby job
 * Payment received
 * Payment released
 * Withdrawal approved
 * Withdrawal rejected
-
-Notifications are stored in MongoDB and also delivered in real time.
+* Job assigned
+* Job completed
 
 ---
 
 ## Admin Features
 
-Admin can:
+Admins can:
 
 * View users
+* View dashboard statistics
 * View platform earnings
-* View withdrawal requests
 * Approve withdrawals
 * Reject withdrawals
-* Monitor platform activity
+* Manage payments
 
 ---
 
-# Security Features
+## Security
 
-## Authentication
+The backend includes multiple security layers.
 
-* JWT Authentication
+### Authentication
+
+* JWT authentication
 * Protected routes
-* Role authorization
-* Secure password hashing
+* Role-based authorization
 
----
-
-## API Security
+### API Protection
 
 * Helmet
-* CORS
-* HTTP Parameter Pollution protection
-* MongoDB Injection protection
 * Rate limiting
-* Compression
-* Request logging with Morgan
+* HPP protection
+* NoSQL injection protection
+* Password hashing
+* Webhook verification
+
+### Payments
+
+* Escrow system
+* MongoDB transactions (atomic operations)
+* Duplicate payment prevention
+* Automatic escrow release
+* Manual payment release
 
 ---
 
-## Payment Security
+## Background Jobs
 
-* Paystack webhook verification
-* Escrow payments
-* Duplicate payment protection
-* Atomic payment release
+Node Cron handles automated tasks:
 
----
-
-## Database Security
-
-MongoDB Transactions are used for:
-
-* Payment release
-* Wallet updates
-* Platform earnings
-* Job status updates
-
-This ensures all operations succeed together or roll back completely.
+* Checks escrow expiration
+* Releases eligible payments
+* Updates wallets
+* Records transactions
+* Sends notifications
 
 ---
 
-# Tech Stack
+## Tech Stack
 
-Backend
+### Backend
 
 * Node.js
 * Express.js
 
-Database
+### Database
 
 * MongoDB
 * Mongoose
 
-Authentication
+### Authentication
 
 * JWT
 * bcrypt
 
-Payments
+### Payments
 
 * Paystack
 
-Realtime
+### Realtime
 
 * Socket.IO
 
-Scheduling
-
-* node-cron
-
-Security
+### Security
 
 * Helmet
 * express-rate-limit
 * express-mongo-sanitize
 * HPP
 
-Logging
+### Background Jobs
 
-* Morgan
-
-Compression
-
-* compression
+* node-cron
 
 ---
 
-# Project Structure
+## Folder Structure
 
-```
+```text
 src/
 │
 ├── config/
@@ -286,6 +280,7 @@ src/
 ├── routes/
 ├── jobs/
 ├── sockets/
+├── services/
 ├── utils/
 ├── app.js
 └── server.js
@@ -293,105 +288,59 @@ src/
 
 ---
 
-# Installation
-
-Clone the repository
-
-```bash
-git clone <repository-url>
-```
-
-Install dependencies
-
-```bash
-npm install
-```
-
-Create an environment file
-
-```bash
-cp .env.example .env
-```
-
-Start the development server
-
-```bash
-npm run dev
-```
-
----
-
-# Environment Variables
-
-Example:
-
-```env
-PORT=3000
-
-MONGO_URI=your_database_url
-
-JWT_SECRET=your_secret
-
-PAYSTACK_SECRET_KEY=your_paystack_secret
-
-PAYSTACK_PUBLIC_KEY=your_public_key
-```
-
-Never commit your real `.env` file.
-
----
-
-# API Modules
+## API Modules
 
 * Authentication
 * Artisan
 * Jobs
 * Payments
 * Wallet
-* Reviews
 * Notifications
+* Reviews
+* Status
 * Admin
 
 ---
 
-# Current Security Status
+## Current Status
 
-Implemented:
+Completed:
 
-* JWT Authentication
-* Role Authorization
-* MongoDB Transactions
-* Escrow Payments
-* Wallet Protection
-* API Rate Limiting
-* Mongo Sanitization
-* HPP Protection
-* Secure Webhooks
-* Socket Authentication
+* JWT authentication
+* Role-based authorization
+* Artisan profiles
+* Job management
+* Escrow payments
+* Wallet system
+* Transaction recording
+* Notification system
+* Admin dashboard
+* Automatic escrow release
+* MongoDB transactions
+* Security middleware
 
 ---
 
-# Future Improvements
+## Planned Improvements
 
 * Refresh token authentication
 * Email verification
-* Password reset flow
-* Refund system
-* Customer wallet
-* Push notifications
-* File uploads
-* SMS notifications
-* Two-factor authentication
-* Audit logs
-* API documentation with Swagger
-* Docker deployment
+* Password reset
+* Cloudinary image upload
+* Location radius search
+* Search and filtering
+* Pagination
+* Analytics dashboard
+* Unit testing
+* API documentation (Swagger)
+* Docker support
 * CI/CD pipeline
-* Automated testing
 * Redis caching
+* Queue processing with BullMQ
 
 ---
 
-# Author
+## Author
 
 **Ukpabi Godwin Michael**
 
