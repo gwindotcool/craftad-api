@@ -1,5 +1,9 @@
 # Craftad Backend API
 
+Craftad is a RESTful backend powering a handyman marketplace that connects customers with skilled artisans. The platform enables customers to hire professionals, securely pay through an escrow system, and manage jobs from creation to completion.
+
+It is designed with scalability, security, and maintainability in mind using Node.js, Express, MongoDB, and Mongoose.
+
 ## Overview
 
 Craftad is a backend service for a handyman marketplace that connects customers with verified artisans. Customers can post jobs, artisans can apply and complete work, and payments are handled through an escrow system to ensure secure transactions.
@@ -162,8 +166,7 @@ This ensures full audit tracking.
 
 ## Notification System
 
-Real-time notifications using Socket.IO.
-
+Supports real-time notifications using Socket.IO alongside persistent notification storage.
 Examples:
 
 * New nearby job
@@ -285,8 +288,38 @@ src/
 ├── app.js
 └── server.js
 ```
+## API Architecture
 
+The backend follows REST principles.
+
+Example endpoints:
+
+POST /api/auth/register
+
+POST /api/auth/login
+
+POST /api/jobs/create
+
+GET /api/jobs/suggested
+
+POST /api/payments/initialize
+
+PATCH /api/payments/release/:jobId
+
+POST /api/wallet/withdraw
 ---
+
+## Performance Optimization
+
+MongoDB indexes are used for:
+
+- User lookup
+- Job status
+- Assigned artisan
+- Customer history
+- GeoJSON location queries
+- Artisan availability
+- Ratings
 
 ## API Modules
 
@@ -347,3 +380,5 @@ Completed:
 Backend Developer
 
 GitHub: https://github.com/gwindotcool
+
+email: gwindotcool@gmail.com

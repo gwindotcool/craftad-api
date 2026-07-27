@@ -1,7 +1,21 @@
 const crypto = require("crypto");
 const Transaction = require("../models/Transaction");
 
-exports.createTransaction = async ({user, wallet, payment, withdrawal, job, type, amount, balanceBefore = 0, balanceAfter = 0, status = "successful", description = "", session = null,}) => {
+exports.createTransaction = async ({
+         user,
+         wallet,
+         payment,
+         withdrawal,
+         job,
+         type,
+         amount,
+         balanceBefore = 0,
+         balanceAfter = 0,
+         status = "successful",
+         description = "",
+         session = null,
+     }) => {
+
     const transaction = {
         user,
         wallet,
@@ -17,7 +31,10 @@ exports.createTransaction = async ({user, wallet, payment, withdrawal, job, type
         reference: `TXN-${Date.now()}-${crypto.randomBytes(3).toString("hex")}`,
     };
 
-    return Transaction.create([transaction], { session }).then(
-        (docs) => docs[0]
+    const docs = await Transaction.create(
+        [transaction],
+        { session }
     );
+
+    return docs[0];
 };

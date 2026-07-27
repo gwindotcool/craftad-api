@@ -5,41 +5,52 @@ const Wallet = require("../models/Wallet");
 const PlatformWallet = require("../models/PlatformWallet");
 const { sendNotification } = require("../utils/notify");
 const mongoose = require("mongoose");
+const { createTransaction } = require("../services/transaction.service");
 
 const releaseEscrowPayments = async () => {
-    const session = await mongoose.startSession();
 
-    try {
-        session.startTransaction();
+    const now = new Date();
 
-        const now = new Date();
+    const duePayments = await Payment.find({
+        status: "held",
+        autoReleaseAt: {$lte: now},
+        isAutoReleased: false
+    });
 
-        const duePayments = await Payment.find({
-            status: "held",
-            autoReleaseAt: { $lte: now },
-            isAutoReleased: false
-        });
+    for (const payment of duePayments) {
+        const session = await mongoose.startSession();
 
-        for (const payment of duePayments) {
+        try {
+            session.startTransaction();
 
-            const job = await Job.findById(payment.job);
+            const job = await Job.findById(payment.job)
+                .session(session);
 
-            if (!job) continue;
+
+            if (!job) {
+                await session.abortTransaction();
+                continue;
+            }
 
             // skip if job not completed
-            if (job.status !== "completed") continue;
+            if (job.status !== "completed") {
+                await session.abortTransaction();
+                continue;
+            }
 
             const PLATFORM_PERCENTAGE = 10;
 
-            const platformFee = (releasedPayment.amount * PLATFORM_PERCENTAGE) / 100;
-            const artisanAmount = releasedPayment.amount - platformFee;
+            const platformFee =
+                (payment.amount * PLATFORM_PERCENTAGE) / 100;
+
+            const artisanAmount = payment.amount - platformFee;
 
             // update payment
 
             const releasedPayment =
                 await Payment.findOneAndUpdate(
                     {
-                        _id: releasedPayment._id,
+                        _id: payment._id,
                         status: "held",
                         isAutoReleased: false
                     },
@@ -50,34 +61,37 @@ const releaseEscrowPayments = async () => {
                         }
                     },
                     {
-                        new: true
+                        new: true,
+                        session
                     }
                 );
 
-            if (!releasedPayment) continue;
-
-            await releasedPayment.save();
-
-            // artisan wallet
-            let wallet = await Wallet.findOne({ user: releasedPayment.artisan });
-
-            if (!wallet) {
-                wallet = new Wallet({ user: releasedPayment.artisan });
+            if (!releasedPayment) {
+                await session.abortTransaction();
+                continue;
             }
 
-            wallet.balance += artisanAmount;
+            // artisan wallet
+            let wallet = await Wallet.findOne({user: releasedPayment.artisan})
+                .session(session)
+
+            if (!wallet) {
+                wallet = new Wallet({user: releasedPayment.artisan});
+            }
 
             const before = wallet.balance;
 
             wallet.balance += artisanAmount;
+            wallet.totalEarned += artisanAmount;
 
-            await wallet.save();
+            await wallet.save({ session });
+
 
             await createTransaction({
 
                 user: releasedPayment.artisan,
 
-                wallet: releasedPayment._id,
+                wallet: wallet._id,
 
                 payment: payment._id,
 
@@ -92,41 +106,47 @@ const releaseEscrowPayments = async () => {
                 balanceAfter: wallet.balance,
 
                 description:
-                    "Payment released"
+                    "Payment released",
+                session,
 
             });
 
 
-            wallet.totalEarned += artisanAmount;
-            await wallet.save();
-
             // platform wallet
-            let platformWallet = await PlatformWallet.findOne();
+            let platformWallet =
+                await PlatformWallet
+                    .findOne()
+                    .session(session);
 
             if (!platformWallet) {
-                platformWallet = new PlatformWallet({ totalEarnings: 0 });
+                platformWallet =
+                    new PlatformWallet({
+                        totalEarnings: 0
+                    });
             }
 
             platformWallet.totalEarnings += platformFee;
 
+            await platformWallet.save({ session });
+
             await createTransaction({
-
                 user: null,
-
                 type: "platform_fee",
-
                 amount: platformFee,
-
-                description:
-                    "Marketplace commission"
-
+                description: "Marketplace commission",
+                session,
             });
 
-            await platformWallet.save();
+
+            await platformWallet.save({ session });
 
             // update job
             job.status = "paid";
-            await job.save();
+
+            await job.save({ session });
+
+
+            await session.commitTransaction();
 
             // notify artisan
             await sendNotification({
@@ -138,26 +158,24 @@ const releaseEscrowPayments = async () => {
 
             // notify customer
             await sendNotification({
-                user: payment.customer,
+                user: job.customer,
                 title: "Payment Released",
                 message:
                     "Escrow payment was automatically released.",
                 type: "payment",
             });
+
+        } catch (error) {
+            await session.abortTransaction();
+
+            console.error("Escrow release error:", error.message);
+        } finally {
+            await session.endSession()
         }
-        await session.commitTransaction();
-
-
-        console.log(`Escrow job ran: ${duePayments.length} payments processed`);
-
-    } catch (error) {
-        await session.abortTransaction();
-
-        console.error("Escrow release error:", error.message);
-    }finally {
-        await session.endSession()
     }
-};
+    console.log(`Escrow job ran: ${duePayments.length} payments processed`);
+
+}
 
 // run every hour
 cron.schedule("0 * * * *", releaseEscrowPayments);

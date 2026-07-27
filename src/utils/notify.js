@@ -3,16 +3,11 @@ const Notification = require("../models/Notification.model");
 const { getIO } = require("../sockets/sockets");
 
 exports.sendNotification = async ({
-
-                                      user,
-
-                                      title,
-
-                                      message,
-
-                                      type = "system",
-
-                                  }) => {
+         user,
+         title,
+         message,
+         type = "system",
+     }) => {
 
     try {
 

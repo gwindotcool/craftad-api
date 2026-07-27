@@ -188,6 +188,8 @@ exports.releasePayment = async (req, res) => {
             });
         }
 
+        console.log("Job status:", job.status);
+
         if (job.status !== "completed") {
             await session.abortTransaction();
 
@@ -224,6 +226,7 @@ exports.releasePayment = async (req, res) => {
                 message: "Payment not found, already released, or not yet verified"
             });
         }
+        console.log("Released payment:", releasedPayment);
 
         const PLATFORM_PERCENTAGE = 10;
 
@@ -257,15 +260,15 @@ exports.releasePayment = async (req, res) => {
 
         wallet.totalEarned += artisanAmount;
 
-        await wallet.save();
+        await wallet.save({ session });
 
         await createTransaction({
 
-            user: payment.artisan,
+            user: releasedPayment.artisan,
 
             wallet: wallet._id,
 
-            payment: payment._id,
+            payment: releasedPayment._id,
 
             job: job._id,
 
@@ -277,8 +280,9 @@ exports.releasePayment = async (req, res) => {
 
             balanceAfter: wallet.balance,
 
-            description:
-                "Escrow payment released"
+            description: "Escrow payment released",
+
+            session
 
         });
         // platform wallet
